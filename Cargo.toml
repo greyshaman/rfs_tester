@@ -3,6 +3,12 @@ name = "rfs_tester"
 version = "0.1.0"
 authors = ["Sergey Reshetnikov <shaman@simmirra.com>"]
 edition = "2018"
+repository = "https://github.com/greyshaman/rfs_tester"
+homepage = "https://github.com/greyshaman/rfs_tester"
+keywords = ["test", "file", "directory"]
+categories = ["filesystem"]
+readme = "README.md"
+license = "MIT"
 description = """
 This package allows you to prepare a temporary directory for testing, 
 conduct testing related to file operations and after testing is completed, 
