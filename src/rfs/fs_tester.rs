@@ -1,338 +1,304 @@
-#[cfg(test)]
-pub mod tester {
-  use std::fs::{self, DirBuilder, File};
-  use std::io::{self, Write, Read};
-  use std::result as std_result;
-  use rand::Rng;
-  use serde::{Serialize, Deserialize};
-  use std::path::Path;
+use std::fs::{self, DirBuilder, File};
+use std::io::{self, Write, Read};
+use std::result as std_result;
+use rand::Rng;
+use serde::{Serialize, Deserialize};
+use std::path::Path;
 
-  use crate::rfs::error::FsTesterError;
+use crate::rfs::error::FsTesterError;
 
-  /// Customized result type to handle config parse error
-  type Result<T> = std_result::Result<T, Box<dyn std::error::Error>>;
+/// Customized result type to handle config parse error
+type Result<T> = std_result::Result<T, Box<dyn std::error::Error>>;
+
+/// Struct for directory record in configuration
+/// for example: 
+/// {
+///   "name": "test_dir",
+///   "content": [],
+/// }
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct DirectoryConf {
+  pub name: String,
+  pub content: Vec<ConfigEntry>,
+}
+
+/// Struct for file record in configuration
+/// for example:
+/// {
+///   "name": "test.png",
+///   "content": "owiuewoiu3487343874",
+/// } 
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct FileConf {
+  pub name: String,
+  pub content: FileContent,
+}
+
+/// File content can be present by three ways
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all="snake_case")]
+pub enum FileContent {
+  /// Inline - by vector of bytes
+  /// file:
+  ///   inline: 
+  ///   - 116            
+  ///   - 101            
+  ///   - 115            
+  ///   - 116
+  Inline(Vec<u8>),
+  /// Get from real file by its path
+  /// file:
+  ///   original_file: "test.txt"
+  OriginalFile(String),
+  /// or simply Empty
+  /// file:
+  ///   empty:
+  Empty,
+}
+
+/// Struct for link record in configuration
+/// for example json:
+/// {
+///   "name": "test_link.png",
+///   "target": "test.png",
+/// }
+/// or yaml:
+/// link:
+///   name: test_link.txt
+///   target: test.txt
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct LinkConf {
+  pub name: String,
+  pub target: String,
+}
+
+/// FS Config entry enum
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all="snake_case")]
+pub enum ConfigEntry {
+  Directory(DirectoryConf),
+  File(FileConf),
+  Link(LinkConf),
+}
+
+/// File System config structure to contains directories, files and links
+/// to execute tests with fs io operations
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct Config(pub Vec<ConfigEntry>);
+
+/// File System Tester used to create some configured structure in directory with 
+/// files and links to them. FsTester can start custom test closure and remove fs
+/// structure after testing complete or fail.
+pub struct FsTester {
+  pub config: Config,
+  pub base_dir: String,
+}
+
+impl FsTester {
+  fn get_random_code() -> u64 {
+    rand::thread_rng().gen::<u64>()
+  }
   
-  /// Struct for directory record in configuration
-  /// for example: 
-  /// {
-  ///   "name": "test_dir",
-  ///   "content": [],
-  /// }
-  #[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
-  pub struct DirectoryConf {
-    pub name: String,
-    pub content: Vec<ConfigEntry>,
-  }
-
-  /// Struct for file record in configuration
-  /// for example:
-  /// {
-  ///   "name": "test.png",
-  ///   "content": "owiuewoiu3487343874",
-  /// } 
-  #[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
-  pub struct FileConf {
-    pub name: String,
-    pub content: FileContent,
-  }
-
-  /// File content can be present by three ways
-  #[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
-  #[serde(rename_all="snake_case")]
-  pub enum FileContent {
-    /// Inline - by vector of bytes
-    /// file:
-    ///   inline: 
-    ///   - 116            
-    ///   - 101            
-    ///   - 115            
-    ///   - 116
-    Inline(Vec<u8>),
-    /// Get from real file by its path
-    /// file:
-    ///   original_file: "test.txt"
-    OriginalFile(String),
-    /// or simply Empty
-    /// file:
-    ///   empty:
-    Empty,
-  }
+  fn create_dir(dirname: &str) -> std_result::Result<(), io::Error> {
+    let dir_builder = DirBuilder::new();
+    dir_builder.create(dirname)?;
   
-  /// Struct for link record in configuration
-  /// for example json:
-  /// {
-  ///   "name": "test_link.png",
-  ///   "target": "test.png",
-  /// }
-  /// of yaml:
-  /// link:
-  ///   name: test_link.txt
-  ///   target: test.txt
-  #[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
-  pub struct LinkConf {
-    pub name: String,
-    pub target: String,
+    Ok(())
   }
 
-  /// FS Config entry enum
-  #[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
-  #[serde(rename_all="snake_case")]
-  pub enum ConfigEntry {
-    Directory(DirectoryConf),
-    File(FileConf),
-    Link(LinkConf),
+  fn create_file(file_name: &str, content: &[u8]) -> std_result::Result<(), io::Error> {
+    let mut file = File::create(&file_name)?;
+    file.write_all(content)?;
+  
+    Ok(())
   }
 
-  /// File System config structure to contains directories, files and links
-  /// to execute tests with fs io operations
-  #[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
-  pub struct Config(pub Vec<ConfigEntry>);
-
-  /// File System Tester used to create some configured structure in directory with 
-  /// files and links to them. FsTester can start custom test closure and remove fs
-  /// structure after testing complete or fail.
-  pub struct FsTester {
-    pub config: Config,
-    pub base_dir: String,
+  fn create_link(link_name: &str, target_name: &str) -> std_result::Result<(), io::Error> {
+    fs::hard_link(target_name, link_name)?; // TODO: try to use platform based softlink
+  
+    Ok(())
   }
 
-  impl FsTester {
-    fn get_random_code() -> u64 {
-      rand::thread_rng().gen::<u64>()
-    }
-    
-    fn create_dir(dirname: &str) -> std_result::Result<(), io::Error> {
-      let dir_builder = DirBuilder::new();
-      dir_builder.create(dirname)?;
-    
-      Ok(())
-    }
+  fn delete_test_set(dirname: &str) -> std_result::Result<(), io::Error> {
+    fs::remove_dir_all(dirname)?;
+    Ok(())
+  }
 
-    fn create_file(file_name: &str, content: &[u8]) -> std_result::Result<(), io::Error> {
-      let mut file = File::create(&file_name)?;
-      file.write_all(content)?;
+  fn build_directory(
+    directory_conf: &DirectoryConf,
+    parent_path: &str,
+    level: i32
+  ) -> std_result::Result<(), io::Error> {
+    let dir_path = if level == 0 {
+      let uniq_code = Self::get_random_code();
+      format!("{}/{}_{}", parent_path, directory_conf.name, uniq_code)
+    } else {
+      format!("{}/{}", parent_path, directory_conf.name)
+    };
+    Self::create_dir(&dir_path)?;
     
-      Ok(())
-    }
-
-    fn create_link(link_name: &str, target_name: &str) -> std_result::Result<(), io::Error> {
-      fs::hard_link(target_name, link_name)?; // TODO: try to use platform based softlink
-    
-      Ok(())
-    }
-
-    fn delete_test_set(dirname: &str) -> std_result::Result<(), io::Error> {
-      fs::remove_dir_all(dirname)?;
-      Ok(())
-    }
-
-    fn build_directory(
-      directory_conf: &DirectoryConf,
-      parent_path: &str,
-      level: i32
-    ) -> std_result::Result<(), io::Error> {
-      let dir_path = if level == 0 {
-        let uniq_code = Self::get_random_code();
-        format!("{}/{}_{}", parent_path, directory_conf.name, uniq_code)
-      } else {
-        format!("{}/{}", parent_path, directory_conf.name)
-      };
-      Self::create_dir(&dir_path)?;
-      
-      for entry in directory_conf.content.iter() {
-        let mut buffer: Vec<u8> = Vec::new(); // placed here to satisfy lifetime 
-                                              //requrement propbably better way existing
-        let result = match entry {
-          ConfigEntry::Directory(conf) =>
-            Self::build_directory(conf, &dir_path, level + 1),
-          ConfigEntry::File(conf) => {
-            let file_name: String = format!("{}/{}", parent_path, conf.name);
-            let content: &[u8] = match &conf.content {
-              FileContent::Inline(data) => data,
-              FileContent::OriginalFile(file_path) => {
-                let mut original_file = File::open(file_path)?;
-                original_file.read_to_end(&mut buffer)?;
-                &buffer
-              }
-              FileContent::Empty => &[]
-            };
-            Self::create_file(&file_name, &content)
-          }
-          ConfigEntry::Link(conf) => {
-            let link_name = format!("{}/{}", &parent_path, conf.name);
-            Self::create_link(&link_name, &conf.target)
-          },
-        };
-        if let Err(e) = result {
-          panic!("{}", e);
+    for entry in directory_conf.content.iter() {
+      let mut buffer: Vec<u8> = Vec::new(); // placed here to satisfy lifetime 
+                                            //requrement propbably better way existing
+      let result = match entry {
+        ConfigEntry::Directory(conf) =>
+          Self::build_directory(conf, &dir_path, level + 1),
+        ConfigEntry::File(conf) => {
+          let file_name: String = format!("{}/{}", parent_path, conf.name);
+          let content: &[u8] = match &conf.content {
+            FileContent::Inline(data) => data,
+            FileContent::OriginalFile(file_path) => {
+              let mut original_file = File::open(file_path)?;
+              original_file.read_to_end(&mut buffer)?;
+              &buffer
+            }
+            FileContent::Empty => &[]
+          };
+          Self::create_file(&file_name, &content)
         }
-      }
-
-      Ok(())
-    }
-
-    /// Config parser
-    /// config can be string in yaml or json format:
-    /// 
-    /// Example
-    /// ```rust
-    /// let simple_conf_str = "---
-    /// - directory:
-    /// name: test
-    /// content:
-    /// - file:
-    ///     name: test.txt
-    ///     content:
-    ///       inline:            
-    ///       - 116            
-    ///       - 101            
-    ///       - 115            
-    ///       - 116            
-    /// ";
-    /// let test_conf = Config(vec!(ConfigEntry::Directory(
-    ///   DirectoryConf {
-    ///     name: String::from("test"),
-    ///     content: vec!(
-    ///       ConfigEntry::File(
-    ///         FileConf {
-    ///           name: String::from("test.txt"),
-    ///           content: 
-    ///             FileContent::Inline(
-    ///               String::from("test").into_bytes(),
-    ///             )
-    ///         }
-    ///       )
-    ///     ),
-    ///   }
-    /// )));
-    ///   
-    /// assert_eq!(test_conf, FsTester::parse_config(simple_conf_str).unwrap());
-    /// ```
-    /// 
-    /// Example
-    /// ```rust
-    /// let simple_conf_str = 
-    ///   "[{\"directory\":{\"name\":\"test\",\"content\":[{\"file\":{\"name\":\"test.txt\",\"content\":{\"inline\":[116,101,115,116]}}}]}}]";
-    /// let test_conf = Config(vec!(ConfigEntry::Directory(
-    ///   DirectoryConf {
-    ///     name: String::from("test"),
-    ///     content: vec!(
-    ///       ConfigEntry::File(
-    ///         FileConf {
-    ///           name: String::from("test.txt"),
-    ///           content: 
-    ///             FileContent::Inline(
-    ///               String::from("test").into_bytes(),
-    ///             )
-    ///         }
-    ///       )
-    ///     ),
-    ///   }
-    /// )));
-    /// 
-    /// assert_eq!(test_conf, FsTester::parse_config(simple_conf_str).unwrap());
-    /// 
-    /// ```
-    pub(in super) fn parse_config(config_str: &str) -> Result<Config> {
-      // detect format parse and return config instance
-      match config_str.chars().next() {
-        Some('{') => serde_json::from_str(config_str).or_else(|error| Err(error.into())),
-        Some(_) => serde_yaml::from_str(config_str).or_else(|error| Err(error.into())),
-        None => Err(FsTesterError::EmptyConfig.into()), 
+        ConfigEntry::Link(conf) => {
+          let link_name = format!("{}/{}", &parent_path, conf.name);
+          Self::create_link(&link_name, &conf.target)
+        },
+      };
+      if let Err(e) = result {
+        panic!("{}", e);
       }
     }
-    
-    /// create the test directory, files and link set
-    /// config_str - configuration of test directory in yaml or json format
-    /// start_point - directory name where will create testing directory, it should 
-    ///               presents in FS.
-    pub fn new(config_str: &str, start_point: &str) -> FsTester {
-      let config: Config = match Self::parse_config(config_str) {
-        Ok(conf) => conf,
-        Err(error) => panic!("{}", error),
-      };
-      let base_dir = if start_point.len() == 0 {
-        String::from(".")
+
+    Ok(())
+  }
+
+  /// Config parser
+  /// config can be string in yaml or json format:
+  /// 
+  /// ## Example for yaml
+  /// 
+  /// ```rust
+  /// # use rfs_tester::rfs::*;
+  /// let simple_conf_str = "---
+  ///   - directory:
+  ///       name: test
+  ///       content:
+  ///         - file:
+  ///             name: test.txt
+  ///             content:
+  ///               inline:            
+  ///                 - 116            
+  ///                 - 101            
+  ///                 - 115            
+  ///                 - 116            
+  /// ";
+  /// let test_conf = Config(vec!(ConfigEntry::Directory(
+  ///   DirectoryConf {
+  ///     name: String::from("test"),
+  ///     content: vec!(
+  ///       ConfigEntry::File(
+  ///         FileConf {
+  ///           name: String::from("test.txt"),
+  ///           content: 
+  ///             FileContent::Inline(
+  ///               String::from("test").into_bytes(),
+  ///             )
+  ///         }
+  ///       )
+  ///     ),
+  ///   }
+  /// )));
+  ///   
+  /// assert_eq!(test_conf, FsTester::parse_config(simple_conf_str).unwrap());
+  /// ```
+  /// 
+  /// ## Example for json
+  /// 
+  /// ```rust
+  /// # use rfs_tester::rfs::*;
+  /// let simple_conf_str = 
+  ///   "[{\"directory\":{\"name\":\"test\",\"content\":[{\"file\":{\"name\":\"test.txt\",\"content\":{\"inline\":[116,101,115,116]}}}]}}]";
+  /// let test_conf = Config(vec!(ConfigEntry::Directory(
+  ///   DirectoryConf {
+  ///     name: String::from("test"),
+  ///     content: vec!(
+  ///       ConfigEntry::File(
+  ///         FileConf {
+  ///           name: String::from("test.txt"),
+  ///           content: 
+  ///             FileContent::Inline(
+  ///               String::from("test").into_bytes(),
+  ///             )
+  ///         }
+  ///       )
+  ///     ),
+  ///   }
+  /// )));
+  /// 
+  /// assert_eq!(test_conf, FsTester::parse_config(simple_conf_str).unwrap());
+  /// 
+  /// ```
+  pub fn parse_config(config_str: &str) -> Result<Config> {
+    // detect format parse and return config instance
+    match config_str.chars().next() {
+      Some('{') => serde_json::from_str(config_str).or_else(|error| Err(error.into())),
+      Some(_) => serde_yaml::from_str(config_str).or_else(|error| Err(error.into())),
+      None => Err(FsTesterError::EmptyConfig.into()), 
+    }
+  }
+  
+  /// create the test directory, files and link set
+  /// config_str - configuration of test directory in yaml or json format
+  /// start_point - directory name where will create testing directory, it should 
+  ///               presents in FS.
+  pub fn new(config_str: &str, start_point: &str) -> FsTester {
+    let config: Config = match Self::parse_config(config_str) {
+      Ok(conf) => conf,
+      Err(error) => panic!("{}", error),
+    };
+    let base_dir = if start_point.len() == 0 {
+      String::from(".")
+    } else {
+      if Path::new(start_point).is_dir() {
+        String::from(start_point)
       } else {
-        if Path::new(start_point).is_dir() {
-          String::from(start_point)
-        } else {
-          // return Err(FsTesterError::BaseDirNotFound.into());
-          panic!("Base directory not found!");
-        }
-      };
+        // return Err(FsTesterError::BaseDirNotFound.into());
+        panic!("Base directory not found!");
+      }
+    };
 
-      // check if config started from single directory
-      let zero_level_config_ref: Option<&ConfigEntry> = config.0.iter().next();
-      let directory_conf = match zero_level_config_ref {
-        Some(entry) => match entry {
-          ConfigEntry::File(_) | ConfigEntry::Link(_) => 
-            // return Err(FsTesterError::ShouldFromDirectory.into()),
-            panic!("Config should start from containing directory"),
-          ConfigEntry::Directory(conf) => conf
-        }
-        // None => return Err(FsTesterError::EmptyConfig.into()),
-        None => panic!("Config should not be empty"),
-      };
+    // check if config started from single directory
+    let zero_level_config_ref: Option<&ConfigEntry> = config.0.iter().next();
+    let directory_conf = match zero_level_config_ref {
+      Some(entry) => match entry {
+        ConfigEntry::File(_) | ConfigEntry::Link(_) => 
+          // return Err(FsTesterError::ShouldFromDirectory.into()),
+          panic!("Config should start from containing directory"),
+        ConfigEntry::Directory(conf) => conf
+      }
+      // None => return Err(FsTesterError::EmptyConfig.into()),
+      None => panic!("Config should not be empty"),
+    };
 
-      Self::build_directory(&directory_conf, &base_dir, 0).unwrap();
+    Self::build_directory(&directory_conf, &base_dir, 0).unwrap();
 
-      FsTester { config, base_dir }
-    }
+    FsTester { config, base_dir }
+  }
 
-    /// prepare testing fs structure, start test_proc function and remove directory after
-    /// testing complete.
-    /// Input parameter to specify testing structure for example in json format:
-    /// [
-    ///   {
-    ///     directory: {
-    ///       name: "dirA"
-    ///       content: [
-    ///         {
-    ///           file: {
-    ///             name: "fileA.txt",
-    ///             content: "test",
-    ///             content_type: "text/plain",
-    ///           }
-    ///         },
-    ///         {
-    ///           link: {
-    ///             name: "test_linkA",
-    ///             target: "fileA.txt"
-    ///           }
-    ///         }
-    ///       ]
-    ///     }
-    ///   }
-    /// ]
-    /// 
-    /// or in YAML format:
-    /// ---
-    /// - directory:
-    ///     name: "dirA"
-    ///     content:
-    ///       - file:
-    ///           name: "fileA.txt"
-    ///           content: "test"
-    ///       - link:
-    ///           name: "test_linkA"
-    ///           target: "fileA.txt"
-    pub fn perform_fs_test<F>(&self, test_proc: F) 
-      -> Result<String>
-      where F: Fn(&str) -> std_result::Result<String, io::Error>,
-    {
-      let dirname: &str = self.base_dir.as_ref();
-      let test_result = test_proc(dirname);
-      
-      Self::delete_test_set(dirname)?;
-      test_result.or_else(|e| Err(e.into()))
-    }
+  /// prepare testing fs structure, start test_proc function and remove directory after
+  /// testing complete.
+  pub fn perform_fs_test<F>(&self, test_proc: F) 
+    -> Result<String>
+    where F: Fn(&str) -> std_result::Result<String, io::Error>,
+  {
+    let dirname: &str = self.base_dir.as_ref();
+    let test_result = test_proc(dirname);
+    
+    Self::delete_test_set(dirname)?;
+    test_result.or_else(|e| Err(e.into()))
   }
 }
 
 #[cfg(test)]
 mod tests {
-  use super::tester::*;
+  use super::*;
 
   const YAML_DIR_WITH_EMPTY_FILE: &str = "---
   - directory:
