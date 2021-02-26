@@ -22,12 +22,12 @@ impl fmt::Display for FsTesterError {
       FsTesterError::BaseDirNotFound => 
         write!(
           f, 
-          "Base Folder not found! It should be present and cannot be create on start time"
+          "Base directory not found!"
         ),
       FsTesterError::ShouldFromDirectory =>
         write!(
           f,
-          "Config should start from Directory"
+          "Config should start from containing directory"
         ),
       // FsTesterError::ParseYaml => write!(f, "Config is not satisfy the yaml format"),
       // FsTesterError::ParseJson(ref e) => e.fmt(f),
