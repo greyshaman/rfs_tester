@@ -277,7 +277,7 @@ impl FsTester {
       None => panic!("Config should not be empty"),
     };
 
-    Self::build_directory(&directory_conf, &base_dir, 0).unwrap();
+    let base_dir = Self::build_directory(&directory_conf, &base_dir, 0).unwrap();
 
     FsTester { config, base_dir }
   }
