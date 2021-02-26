@@ -7,7 +7,7 @@ pub mod tester {
   use serde::{Serialize, Deserialize};
   use std::path::Path;
 
-  use crate::m_testing::error::FsTesterError;
+  use crate::rfs::error::FsTesterError;
 
   /// Customized result type to handle config parse error
   type Result<T> = std_result::Result<T, Box<dyn std::error::Error>>;
