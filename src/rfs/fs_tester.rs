@@ -106,17 +106,17 @@ impl FsTester {
     Ok(())
   }
 
-  fn create_file(file_name: &str, content: &[u8]) -> std_result::Result<(), io::Error> {
+  fn create_file(file_name: &str, content: &[u8]) -> std_result::Result<String, io::Error> {
     let mut file = File::create(&file_name)?;
     file.write_all(content)?;
   
-    Ok(())
+    Ok(String::from(file_name))
   }
 
-  fn create_link(link_name: &str, target_name: &str) -> std_result::Result<(), io::Error> {
+  fn create_link(link_name: &str, target_name: &str) -> std_result::Result<String, io::Error> {
     fs::hard_link(target_name, link_name)?; // TODO: try to use platform based softlink
   
-    Ok(())
+    Ok(String::from(link_name))
   }
 
   fn delete_test_set(dirname: &str) -> std_result::Result<(), io::Error> {
@@ -128,7 +128,7 @@ impl FsTester {
     directory_conf: &DirectoryConf,
     parent_path: &str,
     level: i32
-  ) -> std_result::Result<(), io::Error> {
+  ) -> std_result::Result<String, io::Error> {
     let dir_path = if level == 0 {
       let uniq_code = Self::get_random_code();
       format!("{}/{}_{}", parent_path, directory_conf.name, uniq_code)
@@ -166,7 +166,7 @@ impl FsTester {
       }
     }
 
-    Ok(())
+    Ok(dir_path)
   }
 
   /// Config parser
@@ -285,10 +285,10 @@ impl FsTester {
   /// prepare testing fs structure, start test_proc function and remove directory after
   /// testing complete.
   pub fn perform_fs_test<F>(&self, test_proc: F) 
-    -> Result<String>
-    where F: Fn(&str) -> std_result::Result<String, io::Error>,
+    -> Result<()>
+    where F: Fn(&str) -> std_result::Result<(), io::Error>,
   {
-    let dirname: &str = self.base_dir.as_ref();
+    let dirname: &str = &self.base_dir;
     let test_result = test_proc(dirname);
     
     Self::delete_test_set(dirname)?;
@@ -556,10 +556,29 @@ mod tests {
     );
   }
 
+  // #[test]
+  // fn start_simple_test_should_be_success() {
+  //   use std::path::Path;
+
+  //   let tester = FsTester::new(YAML_DIR_WITH_EMPTY_FILE, ".");
+  //   tester.perform_fs_test(|dirname| {
+  //     let inner_file_name = format!("{}/{}", dirname, "test.txt");
+  //     let inner_file = Path::new(&inner_file_name);
+  //     if inner_file.is_file() {
+  //       Ok(())
+  //     } else {
+  //       Err(io::Error::new(io::ErrorKind::NotFound, "test file not found"))
+  //     }
+
+  //   });
+  // }
+
+  // //////////////////////////////////////////////////////////////////////////////////
   // This test need to explore the yaml format of config string.
   // To see serialized string from some config 
   // you need write the config object in test_conf and change assert_ne! to assert_eq!.
   // Serialized result will be show in error message. This is not pretty, but very fast.
+  // //////////////////////////////////////////////////////////////////////////////////
   #[test]
   fn config_serialization_explorer_for_yaml() {
     let test_conf = Config(vec!(ConfigEntry::Directory(
