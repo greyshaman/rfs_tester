@@ -11,23 +11,122 @@ use crate::rfs::error::FsTesterError;
 type Result<T> = std_result::Result<T, Box<dyn std::error::Error>>;
 
 /// Struct for directory record in configuration
-/// for example: 
+/// for example:
+/// 
+/// ## yaml:
+/// 
+/// ```yaml
+/// ---
+///   - directory:
+///       name: test
+///       content:
+///         - file:
+///             name: test.txt
+///             content: empty
+///         - link:
+///             name: test_link
+///             target: test.txt
+/// ```
+/// 
+/// ## json:
+/// 
+/// ```json
 /// {
 ///   "name": "test_dir",
-///   "content": [],
+///   "content": [
+///     "file": {
+///       "name": "test.txt",
+///       "content": "empty"
+///     },
+///     "link": {
+///       "name": "test_link",
+///       "target": "test.txt"
+///     }
+///   ]
 /// }
+/// ```
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct DirectoryConf {
   pub name: String,
   pub content: Vec<ConfigEntry>,
 }
 
-/// Struct for file record in configuration
-/// for example:
-/// {
-///   "name": "test.png",
-///   "content": "owiuewoiu3487343874",
-/// } 
+/// Struct for file record in configuration.
+/// File can be configured as empty, with bytes array or with reference to real file whitch body will be used as content
+/// for test file
+/// 
+/// ## Empty file
+/// 
+/// ### yaml:
+/// 
+/// ```yaml
+/// - file:
+///     name: test.txt
+///     content: empty
+/// ```
+/// 
+/// ### json:
+/// 
+/// ```json
+/// "file": {
+///   "name": "test.txt",
+///   "content": "empty"
+/// }
+/// ```
+/// ## Inline
+/// File content can be configured as **inline**. When you use inline you should add bytes array in configuration.
+/// This configuration case usefull only for small test files
+/// 
+/// Example of configuration for file with name **test.txt** and with "test" in content
+/// 
+/// ### yaml
+/// 
+/// ```yaml
+/// - file:
+///     name: test.txt
+///     content:
+///       inline:
+///         - 106
+///         - 101
+///         - 115
+///         - 116
+/// ```
+/// 
+/// ### json
+/// 
+/// ```json
+/// "file": {
+///   "name": "test.txt",
+///   "content": {
+///     "inline": [116, 101, 115, 116]
+///   }
+/// }
+/// ```
+/// 
+/// ## Original file
+/// In case we need bigger file then we can spicify by **inline**,
+/// we can set path to original file in file system and its contens will be copied to test file
+/// 
+/// For example we have music.mp3 file and want to have test file with same content
+/// 
+/// ### yaml
+/// 
+/// ```yaml
+/// - file:
+///     name: test.mp3
+///     content:
+///       original_file: "./music.mp3"
+/// ```
+/// 
+/// ### json
+/// ```json
+/// "file" : {
+///   "name": "test.mp3",
+///   "content": {
+///     "original_file": "./music.mp3"
+///   }
+/// }
+/// ```
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct FileConf {
   pub name: String,
@@ -39,33 +138,55 @@ pub struct FileConf {
 #[serde(rename_all="snake_case")]
 pub enum FileContent {
   /// Inline - by vector of bytes
-  /// file:
-  ///   inline: 
-  ///   - 116            
-  ///   - 101            
-  ///   - 115            
-  ///   - 116
+  /// 
+  /// ```yaml
+  /// - file:
+  ///     name: test.txt
+  ///     content
+  ///       inline: 
+  ///         - 116            
+  ///         - 101            
+  ///         - 115            
+  ///         - 116
+  /// ```
   Inline(Vec<u8>),
   /// Get from real file by its path
-  /// file:
-  ///   original_file: "test.txt"
+  /// 
+  /// ```yaml
+  /// - file:
+  ///     name: test.txt
+  ///     content:
+  ///       original_file: "test.txt"
+  /// ```
   OriginalFile(String),
   /// or simply Empty
-  /// file:
-  ///   empty:
+  /// 
+  /// ```yaml
+  /// - file: 
+  ///     name: test.txt
+  ///     content: empty
   Empty,
 }
 
-/// Struct for link record in configuration
-/// for example json:
-/// {
-///   "name": "test_link.png",
-///   "target": "test.png",
+/// Struct for configuration link 
+/// 
+/// link can be refering to other test file
+/// 
+/// ### yaml
+/// 
+/// ```yaml
+/// - link:
+///     name: test_link
+///     target: test.txt
+/// ```
+/// 
+/// ### json
+/// ```json
+/// "link": {
+///   "name": "test_link",
+///   "target": "test.txt"
 /// }
-/// or yaml:
-/// link:
-///   name: test_link.txt
-///   target: test.txt
+/// ```
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct LinkConf {
   pub name: String,
@@ -592,9 +713,7 @@ mod tests {
             FileConf {
               name: String::from("test.txt"),
               content: 
-                FileContent::Inline(
-                  String::from("test").into_bytes(),
-                )
+                FileContent::Empty
             }
           )
         ),
@@ -618,9 +737,7 @@ mod tests {
             FileConf {
               name: String::from("test.txt"),
               content: 
-                FileContent::Inline(
-                  String::from("test").into_bytes(),
-                )
+                FileContent::Empty
             }
           )
         ),
