@@ -175,7 +175,7 @@ impl FsTester {
   /// ## Example for yaml
   /// 
   /// ```rust
-  /// # use rfs_tester::rfs::*;
+  /// # use rfs_tester::*;
   /// let simple_conf_str = "---
   ///   - directory:
   ///       name: test
@@ -189,50 +189,50 @@ impl FsTester {
   ///                 - 115            
   ///                 - 116            
   /// ";
-  /// let test_conf = Config(vec!(ConfigEntry::Directory(
-  ///   DirectoryConf {
-  ///     name: String::from("test"),
-  ///     content: vec!(
-  ///       ConfigEntry::File(
-  ///         FileConf {
-  ///           name: String::from("test.txt"),
-  ///           content: 
-  ///             FileContent::Inline(
-  ///               String::from("test").into_bytes(),
-  ///             )
-  ///         }
-  ///       )
-  ///     ),
-  ///   }
-  /// )));
-  ///   
-  /// assert_eq!(test_conf, FsTester::parse_config(simple_conf_str).unwrap());
+  /// # let test_conf = Config(vec!(ConfigEntry::Directory(
+  /// #   DirectoryConf {
+  /// #     name: String::from("test"),
+  /// #     content: vec!(
+  /// #       ConfigEntry::File(
+  /// #         FileConf {
+  /// #           name: String::from("test.txt"),
+  /// #           content: 
+  /// #             FileContent::Inline(
+  /// #               String::from("test").into_bytes(),
+  /// #             )
+  /// #         }
+  /// #       )
+  /// #     ),
+  /// #   }
+  /// # )));
+  /// #   
+  /// # assert_eq!(test_conf, FsTester::parse_config(simple_conf_str).unwrap());
   /// ```
   /// 
   /// ## Example for json
   /// 
   /// ```rust
-  /// # use rfs_tester::rfs::*;
+  /// # use rfs_tester::*;
   /// let simple_conf_str = 
   ///   "[{\"directory\":{\"name\":\"test\",\"content\":[{\"file\":{\"name\":\"test.txt\",\"content\":{\"inline\":[116,101,115,116]}}}]}}]";
-  /// let test_conf = Config(vec!(ConfigEntry::Directory(
-  ///   DirectoryConf {
-  ///     name: String::from("test"),
-  ///     content: vec!(
-  ///       ConfigEntry::File(
-  ///         FileConf {
-  ///           name: String::from("test.txt"),
-  ///           content: 
-  ///             FileContent::Inline(
-  ///               String::from("test").into_bytes(),
-  ///             )
-  ///         }
-  ///       )
-  ///     ),
-  ///   }
-  /// )));
-  /// 
-  /// assert_eq!(test_conf, FsTester::parse_config(simple_conf_str).unwrap());
+  /// # let test_conf = Config(vec!(ConfigEntry::Directory(
+  /// #   DirectoryConf {
+  /// #     name: String::from("test"),
+  /// #     content: vec!(
+  /// #       ConfigEntry::File(
+  /// #         FileConf {
+  /// #           name: String::from("test.txt"),
+  /// #           content: 
+  /// #             FileContent::Inline(
+  /// #               String::from("test").into_bytes(),
+  /// #             )
+  /// #         }
+  /// #       )
+  /// #     ),
+  /// #   }
+  /// # )));
+  /// # 
+  /// # assert_eq!(test_conf, FsTester::parse_config(simple_conf_str).unwrap());
   /// 
   /// ```
   pub fn parse_config(config_str: &str) -> Result<Config> {
