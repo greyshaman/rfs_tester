@@ -121,3 +121,8 @@ or the same in json:
 ```
 
 Project in progress.... will be continue.
+
+## TODO
+
++rework it using macro to allow srart testing
++create more test units
