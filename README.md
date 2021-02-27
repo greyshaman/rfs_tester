@@ -104,15 +104,20 @@ or the same in json:
 {
   "name": "test_dir",
   "content": [
-    "file": {
-      "name": "test.txt",
-      "content": "empty"
+    {
+      "file": {
+        "name": "test.txt",
+        "content": "empty"
+      }
     },
-    "link": {
-      "name": "test_link",
-      "target": "test.txt"
+    {
+      "link": {
+        "name": "test_link",
+        "target": "test.txt"
+      }
     }
   ]
 }
 ```
+
 Project in progress.... will be continue.
