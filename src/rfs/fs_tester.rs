@@ -175,7 +175,8 @@ impl FsTester {
   /// ## Example for yaml
   /// 
   /// ```rust
-  /// # use rfs_tester::*;
+  /// # use rfs_tester::{FsTester, FsTesterError};
+  /// # use rfs_tester::rfs::fs_tester::{ Config, ConfigEntry, DirectoryConf, FileConf, LinkConf, FileContent };
   /// let simple_conf_str = "---
   ///   - directory:
   ///       name: test
@@ -212,7 +213,8 @@ impl FsTester {
   /// ## Example for json
   /// 
   /// ```rust
-  /// # use rfs_tester::*;
+  /// # use rfs_tester::{FsTester, FsTesterError};
+  /// # use rfs_tester::rfs::fs_tester::{ Config, ConfigEntry, DirectoryConf, FileConf, LinkConf, FileContent };
   /// let simple_conf_str = 
   ///   "[{\"directory\":{\"name\":\"test\",\"content\":[{\"file\":{\"name\":\"test.txt\",\"content\":{\"inline\":[116,101,115,116]}}}]}}]";
   /// # let test_conf = Config(vec!(ConfigEntry::Directory(
