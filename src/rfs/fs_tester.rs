@@ -144,7 +144,7 @@ impl FsTester {
         ConfigEntry::Directory(conf) =>
           Self::build_directory(conf, &dir_path, level + 1),
         ConfigEntry::File(conf) => {
-          let file_name: String = format!("{}/{}", parent_path, conf.name);
+          let file_name: String = format!("{}/{}", &dir_path, conf.name);
           let content: &[u8] = match &conf.content {
             FileContent::Inline(data) => data,
             FileContent::OriginalFile(file_path) => {
@@ -157,7 +157,7 @@ impl FsTester {
           Self::create_file(&file_name, &content)
         }
         ConfigEntry::Link(conf) => {
-          let link_name = format!("{}/{}", &parent_path, conf.name);
+          let link_name = format!("{}/{}", &dir_path, conf.name);
           Self::create_link(&link_name, &conf.target)
         },
       };
@@ -286,7 +286,7 @@ impl FsTester {
   /// testing complete.
   pub fn perform_fs_test<F>(&self, test_proc: F) 
     -> Result<()>
-    where F: Fn(&str) -> std_result::Result<(), io::Error>,
+    where F: Fn(&str) -> io::Result<()>,
   {
     let dirname: &str = &self.base_dir;
     let test_result = test_proc(dirname);
@@ -305,7 +305,7 @@ mod tests {
       name: test
       content:
         - file:
-            name: test.txt,
+            name: test.txt
             content:
               empty:
   ";
@@ -556,22 +556,23 @@ mod tests {
     );
   }
 
-  // #[test]
-  // fn start_simple_test_should_be_success() {
-  //   use std::path::Path;
+  #[test]
+  fn start_simple_test_should_be_success() -> Result<()> {
+    use std::path::Path;
+    use std::io;
 
-  //   let tester = FsTester::new(YAML_DIR_WITH_EMPTY_FILE, ".");
-  //   tester.perform_fs_test(|dirname| {
-  //     let inner_file_name = format!("{}/{}", dirname, "test.txt");
-  //     let inner_file = Path::new(&inner_file_name);
-  //     if inner_file.is_file() {
-  //       Ok(())
-  //     } else {
-  //       Err(io::Error::new(io::ErrorKind::NotFound, "test file not found"))
-  //     }
-
-  //   });
-  // }
+    let tester = FsTester::new(YAML_DIR_WITH_EMPTY_FILE, ".");
+    tester.perform_fs_test(|dirname| {
+      let inner_file_name = format!("{}/{}", dirname, "test.txt");
+      let inner_file = Path::new(&inner_file_name);
+      if inner_file.is_file() {
+        Ok(())
+      } else {
+        let error = io::Error::new(io::ErrorKind::NotFound, "test file not found");
+        Err(From::from(error))
+      }
+    })
+  }
 
   // //////////////////////////////////////////////////////////////////////////////////
   // This test need to explore the yaml format of config string.
