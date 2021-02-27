@@ -9,6 +9,7 @@ keywords = ["test", "file", "directory"]
 categories = ["filesystem"]
 readme = "README.md"
 license = "MIT"
+license-file = "LICENSE"
 description = """
 This package allows you to prepare a temporary directory for testing, 
 conduct testing related to file operations and after testing is completed, 
