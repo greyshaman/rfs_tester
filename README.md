@@ -124,5 +124,5 @@ Project in progress.... will be continue.
 
 ## TODO
 
-+rework it using macro to allow srart testing
-+create more test units
+- create more test units
+- Show in docummentation how to create test units with FsTester
