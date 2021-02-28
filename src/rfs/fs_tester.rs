@@ -408,14 +408,23 @@ impl FsTester {
   /// prepare testing fs structure, start test_proc function and remove directory after
   /// testing complete.
   pub fn perform_fs_test<F>(&self, test_proc: F) 
-    -> Result<()>
     where F: Fn(&str) -> io::Result<()>,
   {
     let dirname: &str = &self.base_dir;
-    let test_result = test_proc(dirname);
-    
-    Self::delete_test_set(dirname)?;
-    test_result.or_else(|e| Err(e.into()))
+
+    if let Err(e) = test_proc(dirname) {
+      panic!("inner test has error: {}", e)
+    } else {
+      ()
+    }
+  }
+}
+
+impl Drop for FsTester {
+  fn drop(&mut self) {
+    if let Err(_) = Self::delete_test_set(&self.base_dir) {
+      // TODO: handle delete directory but cannot figure out how and what to do right now. Sorry.  
+    }
   }
 }
 
@@ -431,6 +440,15 @@ mod tests {
             name: test.txt
             content:
               empty:
+  ";
+  const YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML: &str = "---
+  - directory:
+      name: test
+      content:
+        - file:
+            name: test_from_cargo.toml
+            content:
+              original_file: Cargo.toml
   ";
   
   #[test]
@@ -680,21 +698,32 @@ mod tests {
   }
 
   #[test]
-  fn start_simple_test_should_be_success() -> Result<()> {
-    use std::path::Path;
-    use std::io;
+  fn start_simple_successfull_test_should_be_success() {
+    use std::fs;
 
-    let tester = FsTester::new(YAML_DIR_WITH_EMPTY_FILE, ".");
+    let tester = FsTester::new(YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML, ".");
     tester.perform_fs_test(|dirname| {
-      let inner_file_name = format!("{}/{}", dirname, "test.txt");
-      let inner_file = Path::new(&inner_file_name);
-      if inner_file.is_file() {
-        Ok(())
-      } else {
-        let error = io::Error::new(io::ErrorKind::NotFound, "test file not found");
-        Err(From::from(error))
-      }
-    })
+      let inner_file_name = format!("{}/{}", dirname, "test_from_cargo.toml");
+      let metadata = fs::metadata(inner_file_name)?;
+      
+      assert!(metadata.len() > 0);
+      Ok(())
+    });
+  }
+
+  #[test]
+  #[should_panic]
+  fn start_simple_failed_test_should_be_success() {
+    use std::fs;
+
+    let tester = FsTester::new(YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML, ".");
+    tester.perform_fs_test(|dirname| {
+      let inner_file_name = format!("{}/{}", dirname, "test_from_cargo.toml");
+      let metadata = fs::metadata(inner_file_name)?;
+      
+      assert!(metadata.len() == 0);
+      Ok(())
+    });
   }
 
   // //////////////////////////////////////////////////////////////////////////////////
@@ -704,7 +733,8 @@ mod tests {
   // Serialized result will be show in error message. This is not pretty, but very fast.
   // //////////////////////////////////////////////////////////////////////////////////
   #[test]
-  fn config_serialization_explorer_for_yaml() {
+  #[ignore]
+  fn yaml_config_serialization_explorer() {
     let test_conf = Config(vec!(ConfigEntry::Directory(
       DirectoryConf {
         name: String::from("test"),
@@ -713,14 +743,14 @@ mod tests {
             FileConf {
               name: String::from("test.txt"),
               content: 
-                FileContent::Empty
+                FileContent::OriginalFile(String::from("Cargo.toml"))
             }
           )
         ),
       }
     )));
 
-    assert_ne!(String::new(), serde_yaml::to_string(&test_conf).unwrap());
+    assert_eq!(String::new(), serde_yaml::to_string(&test_conf).unwrap());
   }
 
   // This test need to explore the json format of config string.
@@ -728,7 +758,8 @@ mod tests {
   // you need write the config object in test_conf and change assert_ne! to assert_eq!.
   // Serialized result will be show in error message. This is not pretty, but very fast.
   #[test]
-  fn config_serialization_explorer_for_json() {
+  #[ignore]
+  fn json_config_serialization_explorer() {
     let test_conf = Config(vec!(ConfigEntry::Directory(
       DirectoryConf {
         name: String::from("test"),
@@ -737,13 +768,13 @@ mod tests {
             FileConf {
               name: String::from("test.txt"),
               content: 
-                FileContent::Empty
+                FileContent::OriginalFile(String::from("Cargo.toml"))
             }
           )
         ),
       }
     )));
 
-    assert_ne!(String::new(), serde_json::to_string(&test_conf).unwrap());
+    assert_eq!(String::new(), serde_json::to_string(&test_conf).unwrap());
   }
 }
