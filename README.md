@@ -31,7 +31,7 @@ The test directory structure can be configured by yaml or json format.
         - file:
             name: test.txt
             content:
-              inline:            
+              inline_bytes:            
                 - 116            
                 - 101            
                 - 115            
@@ -44,7 +44,9 @@ Number in directory name can be differe because this is random number.
 ### Json configuration
 
 The same directory structure can be configured by json format
+
 #### Examples
+
 
 ```json
 [
@@ -83,7 +85,7 @@ Directory configuration can specify name and content:
 
 ##### Examples
 
-yaml: 
+yaml:
 
 ```yaml
 ---
@@ -120,9 +122,37 @@ or the same in json:
 }
 ```
 
-Project in progress.... will be continue.
+## How to define test?
+
+When we want to test files? directories and links in created sand box we need know the exact name of outer directory.
+This name will be unique each time when FsTester create it. The FsTester provides us this name in closure parameter in
+perform_fs_test function.
+
+### Example
+
+```rust
+use std::fs;
+const YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML: &str = "---
+- directory:
+    name: test
+    content:
+      - file:
+          name: test_from_cargo.toml
+          content:
+            original_file: Cargo.toml
+ ";
+
+let tester = FsTester::new(YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML, ".");
+tester.perform_fs_test(|dirname| {
+//                      ^^^^^^^ name with appended random at the end of name 
+  let inner_file_name = format!("{}/{}", dirname, "test_from_cargo.toml");
+  let metadata = fs::metadata(inner_file_name)?;
+   
+  assert!(metadata.len() > 0);
+  Ok(())
+});
+```
 
 ## TODO
 
 - create more test units
-- Show in docummentation how to create test units with FsTester
