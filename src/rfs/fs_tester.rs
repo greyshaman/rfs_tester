@@ -73,8 +73,8 @@ pub struct DirectoryConf {
 ///   "content": "empty"
 /// }
 /// ```
-/// ## Inline
-/// File content can be configured as **inline**. When you use inline you should add bytes array in configuration.
+/// ## InlineBytes
+/// File content can be configured as **inline_bytes**. When you use inline you should add bytes array in configuration.
 /// This configuration case usefull only for small test files
 /// 
 /// Example of configuration for file with name **test.txt** and with "test" in content
@@ -85,7 +85,7 @@ pub struct DirectoryConf {
 /// - file:
 ///     name: test.txt
 ///     content:
-///       inline:
+///       inline_bytes:
 ///         - 106
 ///         - 101
 ///         - 115
@@ -98,13 +98,13 @@ pub struct DirectoryConf {
 /// "file": {
 ///   "name": "test.txt",
 ///   "content": {
-///     "inline": [116, 101, 115, 116]
+///     "inline_bytes": [116, 101, 115, 116]
 ///   }
 /// }
 /// ```
 /// 
 /// ## Original file
-/// In case we need bigger file then we can spicify by **inline**,
+/// In case we need bigger file then we can spicify by **inline_bytes** or **inline_text**,
 /// we can set path to original file in file system and its contens will be copied to test file
 /// 
 /// For example we have music.mp3 file and want to have test file with same content
@@ -149,7 +149,33 @@ pub enum FileContent {
   ///         - 115            
   ///         - 116
   /// ```
+  #[deprecated(
+    since = "0.3.0",
+    note = "Please use InlineBytes instead"
+  )]
   Inline(Vec<u8>),
+  /// InlineBytes - by vector of bytes
+  /// 
+  /// ```yaml
+  /// - file:
+  ///     name: test.txt
+  ///     content
+  ///       inline_bytes: 
+  ///         - 116            
+  ///         - 101            
+  ///         - 115            
+  ///         - 116
+  /// ```
+  InlineBytes(Vec<u8>),
+  /// InlineText - by vector of bytes
+  /// 
+  /// ```yaml
+  /// - file:
+  ///     name: test.txt
+  ///     content
+  ///       inline_text: test 
+  /// ```
+  InlineText(String),
   /// Get from real file by its path
   /// 
   /// ```yaml
@@ -267,7 +293,8 @@ impl FsTester {
         ConfigEntry::File(conf) => {
           let file_name: String = format!("{}/{}", &dir_path, conf.name);
           let content: &[u8] = match &conf.content {
-            FileContent::Inline(data) => data,
+            FileContent::Inline(data) | FileContent::InlineBytes(data) => data,
+            FileContent::InlineText(text) => text.as_bytes(),
             FileContent::OriginalFile(file_path) => {
               let mut original_file = File::open(file_path)?;
               original_file.read_to_end(&mut buffer)?;
@@ -305,7 +332,7 @@ impl FsTester {
   ///         - file:
   ///             name: test.txt
   ///             content:
-  ///               inline:            
+  ///               inline_bytes:            
   ///                 - 116            
   ///                 - 101            
   ///                 - 115            
@@ -319,7 +346,7 @@ impl FsTester {
   /// #         FileConf {
   /// #           name: String::from("test.txt"),
   /// #           content: 
-  /// #             FileContent::Inline(
+  /// #             FileContent::InlineBytes(
   /// #               String::from("test").into_bytes(),
   /// #             )
   /// #         }
@@ -337,7 +364,7 @@ impl FsTester {
   /// # use rfs_tester::{FsTester, FsTesterError};
   /// # use rfs_tester::rfs::fs_tester::{ Config, ConfigEntry, DirectoryConf, FileConf, LinkConf, FileContent };
   /// let simple_conf_str = 
-  ///   "[{\"directory\":{\"name\":\"test\",\"content\":[{\"file\":{\"name\":\"test.txt\",\"content\":{\"inline\":[116,101,115,116]}}}]}}]";
+  ///   "[{\"directory\":{\"name\":\"test\",\"content\":[{\"file\":{\"name\":\"test.txt\",\"content\":{\"inline_bytes\":[116,101,115,116]}}}]}}]";
   /// # let test_conf = Config(vec!(ConfigEntry::Directory(
   /// #   DirectoryConf {
   /// #     name: String::from("test"),
@@ -346,7 +373,7 @@ impl FsTester {
   /// #         FileConf {
   /// #           name: String::from("test.txt"),
   /// #           content: 
-  /// #             FileContent::Inline(
+  /// #             FileContent::InlineBytes(
   /// #               String::from("test").into_bytes(),
   /// #             )
   /// #         }
@@ -405,8 +432,37 @@ impl FsTester {
     FsTester { config, base_dir }
   }
 
-  /// prepare testing fs structure, start test_proc function and remove directory after
-  /// testing complete.
+  /// Start test_proc function. The test unit can define as closure parameter of **perform_fs_test**.
+  /// The **dirname** closure parameter is name of generated temporary test directory which contains 
+  /// fs units set. We cannot know full name before testing start because it has random number in the end of name.
+  /// FsTester has known it after instance build.
+  /// 
+  /// ## Example
+  /// 
+  /// ```rust
+  /// use std::fs;
+  /// # use rfs_tester::{FsTester};
+  /// const YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML: &str = "---
+  /// - directory:
+  ///     name: test
+  ///     content:
+  ///       - file:
+  ///           name: test_from_cargo.toml
+  ///           content:
+  ///             original_file: Cargo.toml
+  ///  ";
+  ///
+  /// let tester = FsTester::new(YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML, ".");
+  /// tester.perform_fs_test(|dirname| {
+  /// //                      ^^^^^^^ name with appended random at the end of name 
+  ///   let inner_file_name = format!("{}/{}", dirname, "test_from_cargo.toml");
+  ///   let metadata = fs::metadata(inner_file_name)?;
+  ///   
+  ///   assert!(metadata.len() > 0);
+  ///   Ok(())
+  /// });
+  ///   
+  /// ```
   pub fn perform_fs_test<F>(&self, test_proc: F) 
     where F: Fn(&str) -> io::Result<()>,
   {
@@ -523,7 +579,7 @@ mod tests {
   }
 
   #[test]
-  fn parser_should_accept_yaml_config_with_directory_and_file_by_inline() {
+  fn parser_should_accept_yaml_config_with_directory_and_file_by_inline_bytes() {
     let simple_conf_str = "---
     - directory:
         name: test
@@ -531,7 +587,7 @@ mod tests {
         - file:
             name: test.txt
             content:
-              inline:            
+              inline_bytes:            
               - 116            
               - 101            
               - 115            
@@ -545,8 +601,39 @@ mod tests {
             FileConf {
               name: String::from("test.txt"),
               content: 
-                FileContent::Inline(
+                FileContent::InlineBytes(
                   String::from("test").into_bytes(),
+                )
+            }
+          )
+        ),
+      }
+    )));
+
+    assert_eq!(test_conf, FsTester::parse_config(simple_conf_str).unwrap());
+  }
+
+  #[test]
+  fn parser_should_accept_yaml_config_with_directory_and_file_by_inline_text() {
+    let simple_conf_str = "---
+    - directory:
+        name: test
+        content:
+        - file:
+            name: test.txt
+            content:
+              inline_text: test            
+    ";
+    let test_conf = Config(vec!(ConfigEntry::Directory(
+      DirectoryConf {
+        name: String::from("test"),
+        content: vec!(
+          ConfigEntry::File(
+            FileConf {
+              name: String::from("test.txt"),
+              content: 
+                FileContent::InlineText(
+                  String::from("test"),
                 )
             }
           )
@@ -620,7 +707,7 @@ mod tests {
   #[test]
   fn parser_should_accept_json_config_with_directory_and_file() {
     let simple_conf_str = 
-      "[{\"directory\":{\"name\":\"test\",\"content\":[{\"file\":{\"name\":\"test.txt\",\"content\":{\"inline\":[116,101,115,116]}}}]}}]";
+      "[{\"directory\":{\"name\":\"test\",\"content\":[{\"file\":{\"name\":\"test.txt\",\"content\":{\"inline_bytes\":[116,101,115,116]}}}]}}]";
     let test_conf = Config(vec!(ConfigEntry::Directory(
       DirectoryConf {
         name: String::from("test"),
@@ -629,7 +716,7 @@ mod tests {
             FileConf {
               name: String::from("test.txt"),
               content: 
-                FileContent::Inline(
+                FileContent::InlineBytes(
                   String::from("test").into_bytes(),
                 )
             }
@@ -650,7 +737,7 @@ mod tests {
         - file:
             name: test.txt
             content:
-              inline:            
+              inline_bytes:            
               - 116            
               - 101            
               - 115            
@@ -667,7 +754,7 @@ mod tests {
             FileConf {
               name: String::from("test.txt"),
               content: 
-                FileContent::Inline(
+                FileContent::InlineBytes(
                   String::from("test").into_bytes(),
                 )
             }
