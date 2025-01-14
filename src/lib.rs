@@ -5,7 +5,7 @@
 
 pub mod rfs;
 
-pub use rfs::error::FsTesterError;
+pub use rfs::fs_tester_error::FsTesterError;
 
 pub use rfs::fs_tester::FsTester;
 
