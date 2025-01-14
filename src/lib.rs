@@ -1,7 +1,7 @@
-//! This library provides simple util for testing file system operations.
-//! When you test something you need some sandbox which should wipe out after testing finish.
-//! This package allow you configure temporary directory and its inner structure, perform tests and
-//! remove it when all work will done.
+//! This library provides a simple utility for testing file system operations.
+//! When you are testing something, you need a sandbox that can be wiped out after the testing is finished.
+//! This package allows you to configure a temporary directory and its internal structure, run tests,
+//! and remove it once all work is done.
 
 pub mod rfs;
 
