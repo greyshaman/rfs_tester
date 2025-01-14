@@ -1,7 +1,7 @@
-//! FsTesterError Used to detect errors Fs Tester construction
+//! FsTesterError is used to detect errors in the construction of Fs Tester.
 use std::fmt;
 
-/// Configuration parse error 
+/// Configuration parse error
 #[derive(Debug)]
 pub enum FsTesterError {
   EmptyConfig,
@@ -19,9 +19,9 @@ impl fmt::Display for FsTesterError {
 
     match *self {
       FsTesterError::EmptyConfig => write!(f, "Config should not be empty"),
-      FsTesterError::BaseDirNotFound => 
+      FsTesterError::BaseDirNotFound =>
         write!(
-          f, 
+          f,
           "Base directory not found!"
         ),
       FsTesterError::ShouldFromDirectory =>
@@ -53,7 +53,7 @@ impl std::error::Error for FsTesterError {
 
 //     match err.classify() {
 //       Category::Io => FsTesterError::Io(err.into()),
-//       Category::Syntax | Category::Data | Category::Eof => FsTesterError::ParseJson(err), 
+//       Category::Syntax | Category::Data | Category::Eof => FsTesterError::ParseJson(err),
 //     }
 //   }
 // }
