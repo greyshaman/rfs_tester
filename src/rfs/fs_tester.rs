@@ -5,228 +5,14 @@ use rand::Rng;
 use serde::{Serialize, Deserialize};
 use std::path::Path;
 
-use crate::rfs::error::FsTesterError;
+use crate::rfs::fs_tester_error::FsTesterError;
+
+use super::config::config_entry::ConfigEntry;
+use super::config::directory_conf::DirectoryConf;
+use super::file_content::FileContent;
 
 /// Customized result type to handle config parse error
-type Result<T> = std_result::Result<T, Box<dyn std::error::Error>>;
-
-/// Struct for directory record in configuration
-/// for example:
-///
-/// ## yaml:
-///
-/// ```yaml
-/// ---
-///   - directory:
-///       name: test
-///       content:
-///         - file:
-///             name: test.txt
-///             content: empty
-///         - link:
-///             name: test_link
-///             target: test.txt
-/// ```
-///
-/// ## json:
-///
-/// ```json
-/// {
-///   "name": "test_dir",
-///   "content": [
-///     "file": {
-///       "name": "test.txt",
-///       "content": "empty"
-///     },
-///     "link": {
-///       "name": "test_link",
-///       "target": "test.txt"
-///     }
-///   ]
-/// }
-/// ```
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
-pub struct DirectoryConf {
-  pub name: String,
-  pub content: Vec<ConfigEntry>,
-}
-
-/// Struct for file record in configuration.
-/// File can be configured as empty, with bytes array or with reference to real file which body will be used as content
-/// for test file
-///
-/// ## Empty file
-///
-/// ### yaml:
-///
-/// ```yaml
-/// - file:
-///     name: test.txt
-///     content: empty
-/// ```
-///
-/// ### json:
-///
-/// ```json
-/// "file": {
-///   "name": "test.txt",
-///   "content": "empty"
-/// }
-/// ```
-/// ## InlineBytes
-/// File content can be configured as **inline_bytes**. When you use inline you should add bytes array in configuration.
-/// This configuration case usefull only for small test files
-///
-/// Example of configuration for file with name **test.txt** and with "test" in content
-///
-/// ### yaml
-///
-/// ```yaml
-/// - file:
-///     name: test.txt
-///     content:
-///       inline_bytes:
-///         - 106
-///         - 101
-///         - 115
-///         - 116
-/// ```
-///
-/// ### json
-///
-/// ```json
-/// "file": {
-///   "name": "test.txt",
-///   "content": {
-///     "inline_bytes": [116, 101, 115, 116]
-///   }
-/// }
-/// ```
-///
-/// ## Original file
-/// In case we need bigger file then we can spicify by **inline_bytes** or **inline_text**,
-/// we can set path to original file in file system and its contens will be copied to test file
-///
-/// For example we have music.mp3 file and want to have test file with same content
-///
-/// ### yaml
-///
-/// ```yaml
-/// - file:
-///     name: test.mp3
-///     content:
-///       original_file: "./music.mp3"
-/// ```
-///
-/// ### json
-/// ```json
-/// "file" : {
-///   "name": "test.mp3",
-///   "content": {
-///     "original_file": "./music.mp3"
-///   }
-/// }
-/// ```
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
-pub struct FileConf {
-  pub name: String,
-  pub content: FileContent,
-}
-
-/// File content can be present by three ways
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
-#[serde(rename_all="snake_case")]
-pub enum FileContent {
-  /// Inline - by vector of bytes
-  ///
-  /// ```yaml
-  /// - file:
-  ///     name: test.txt
-  ///     content
-  ///       inline:
-  ///         - 116
-  ///         - 101
-  ///         - 115
-  ///         - 116
-  /// ```
-  #[deprecated(
-    since = "0.3.0",
-    note = "Please use InlineBytes instead"
-  )]
-  Inline(Vec<u8>),
-  /// InlineBytes - by vector of bytes
-  ///
-  /// ```yaml
-  /// - file:
-  ///     name: test.txt
-  ///     content
-  ///       inline_bytes:
-  ///         - 116
-  ///         - 101
-  ///         - 115
-  ///         - 116
-  /// ```
-  InlineBytes(Vec<u8>),
-  /// InlineText - by vector of bytes
-  ///
-  /// ```yaml
-  /// - file:
-  ///     name: test.txt
-  ///     content
-  ///       inline_text: test
-  /// ```
-  InlineText(String),
-  /// Get from real file by its path
-  ///
-  /// ```yaml
-  /// - file:
-  ///     name: test.txt
-  ///     content:
-  ///       original_file: "test.txt"
-  /// ```
-  OriginalFile(String),
-  /// or simply Empty
-  ///
-  /// ```yaml
-  /// - file:
-  ///     name: test.txt
-  ///     content: empty
-  Empty,
-}
-
-/// Struct for configuration link
-///
-/// link can be refering to other test file
-///
-/// ### yaml
-///
-/// ```yaml
-/// - link:
-///     name: test_link
-///     target: test.txt
-/// ```
-///
-/// ### json
-/// ```json
-/// "link": {
-///   "name": "test_link",
-///   "target": "test.txt"
-/// }
-/// ```
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
-pub struct LinkConf {
-  pub name: String,
-  pub target: String,
-}
-
-/// FS Config entry enum
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
-#[serde(rename_all="snake_case")]
-pub enum ConfigEntry {
-  Directory(DirectoryConf),
-  File(FileConf),
-  Link(LinkConf),
-}
+pub type Result<T> = std_result::Result<T, Box<dyn std::error::Error>>;
 
 /// File System config structure to contains directories, files and links
 /// to execute tests with fs io operations
@@ -293,7 +79,7 @@ impl FsTester {
         ConfigEntry::File(conf) => {
           let file_name: String = format!("{}/{}", &dir_path, conf.name);
           let content: &[u8] = match &conf.content {
-            FileContent::Inline(data) | FileContent::InlineBytes(data) => data,
+            FileContent::InlineBytes(data) => data,
             FileContent::InlineText(text) => text.as_bytes(),
             FileContent::OriginalFile(file_path) => {
               let mut original_file = File::open(file_path)?;
@@ -486,7 +272,9 @@ impl Drop for FsTester {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
+  use crate::rfs::config::{file_conf::FileConf, link_conf::LinkConf};
+
+use super::*;
 
   const YAML_DIR_WITH_EMPTY_FILE: &str = "---
   - directory:
