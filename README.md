@@ -62,7 +62,7 @@ The same directory structure can be configured by json format
                   "name": "test.txt",
                   "content":
                     {
-                      "inline": [116,101,115,116]
+                      "inline_bytes": [116,101,115,116]
                     }
                 }
             }
