@@ -12,9 +12,9 @@ type Result<T> = std_result::Result<T, Box<dyn std::error::Error>>;
 
 /// Struct for directory record in configuration
 /// for example:
-/// 
+///
 /// ## yaml:
-/// 
+///
 /// ```yaml
 /// ---
 ///   - directory:
@@ -27,9 +27,9 @@ type Result<T> = std_result::Result<T, Box<dyn std::error::Error>>;
 ///             name: test_link
 ///             target: test.txt
 /// ```
-/// 
+///
 /// ## json:
-/// 
+///
 /// ```json
 /// {
 ///   "name": "test_dir",
@@ -52,21 +52,21 @@ pub struct DirectoryConf {
 }
 
 /// Struct for file record in configuration.
-/// File can be configured as empty, with bytes array or with reference to real file whitch body will be used as content
+/// File can be configured as empty, with bytes array or with reference to real file which body will be used as content
 /// for test file
-/// 
+///
 /// ## Empty file
-/// 
+///
 /// ### yaml:
-/// 
+///
 /// ```yaml
 /// - file:
 ///     name: test.txt
 ///     content: empty
 /// ```
-/// 
+///
 /// ### json:
-/// 
+///
 /// ```json
 /// "file": {
 ///   "name": "test.txt",
@@ -76,11 +76,11 @@ pub struct DirectoryConf {
 /// ## InlineBytes
 /// File content can be configured as **inline_bytes**. When you use inline you should add bytes array in configuration.
 /// This configuration case usefull only for small test files
-/// 
+///
 /// Example of configuration for file with name **test.txt** and with "test" in content
-/// 
+///
 /// ### yaml
-/// 
+///
 /// ```yaml
 /// - file:
 ///     name: test.txt
@@ -91,9 +91,9 @@ pub struct DirectoryConf {
 ///         - 115
 ///         - 116
 /// ```
-/// 
+///
 /// ### json
-/// 
+///
 /// ```json
 /// "file": {
 ///   "name": "test.txt",
@@ -102,22 +102,22 @@ pub struct DirectoryConf {
 ///   }
 /// }
 /// ```
-/// 
+///
 /// ## Original file
 /// In case we need bigger file then we can spicify by **inline_bytes** or **inline_text**,
 /// we can set path to original file in file system and its contens will be copied to test file
-/// 
+///
 /// For example we have music.mp3 file and want to have test file with same content
-/// 
+///
 /// ### yaml
-/// 
+///
 /// ```yaml
 /// - file:
 ///     name: test.mp3
 ///     content:
 ///       original_file: "./music.mp3"
 /// ```
-/// 
+///
 /// ### json
 /// ```json
 /// "file" : {
@@ -138,15 +138,15 @@ pub struct FileConf {
 #[serde(rename_all="snake_case")]
 pub enum FileContent {
   /// Inline - by vector of bytes
-  /// 
+  ///
   /// ```yaml
   /// - file:
   ///     name: test.txt
   ///     content
-  ///       inline: 
-  ///         - 116            
-  ///         - 101            
-  ///         - 115            
+  ///       inline:
+  ///         - 116
+  ///         - 101
+  ///         - 115
   ///         - 116
   /// ```
   #[deprecated(
@@ -155,29 +155,29 @@ pub enum FileContent {
   )]
   Inline(Vec<u8>),
   /// InlineBytes - by vector of bytes
-  /// 
+  ///
   /// ```yaml
   /// - file:
   ///     name: test.txt
   ///     content
-  ///       inline_bytes: 
-  ///         - 116            
-  ///         - 101            
-  ///         - 115            
+  ///       inline_bytes:
+  ///         - 116
+  ///         - 101
+  ///         - 115
   ///         - 116
   /// ```
   InlineBytes(Vec<u8>),
   /// InlineText - by vector of bytes
-  /// 
+  ///
   /// ```yaml
   /// - file:
   ///     name: test.txt
   ///     content
-  ///       inline_text: test 
+  ///       inline_text: test
   /// ```
   InlineText(String),
   /// Get from real file by its path
-  /// 
+  ///
   /// ```yaml
   /// - file:
   ///     name: test.txt
@@ -186,26 +186,26 @@ pub enum FileContent {
   /// ```
   OriginalFile(String),
   /// or simply Empty
-  /// 
+  ///
   /// ```yaml
-  /// - file: 
+  /// - file:
   ///     name: test.txt
   ///     content: empty
   Empty,
 }
 
-/// Struct for configuration link 
-/// 
+/// Struct for configuration link
+///
 /// link can be refering to other test file
-/// 
+///
 /// ### yaml
-/// 
+///
 /// ```yaml
 /// - link:
 ///     name: test_link
 ///     target: test.txt
 /// ```
-/// 
+///
 /// ### json
 /// ```json
 /// "link": {
@@ -233,7 +233,7 @@ pub enum ConfigEntry {
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Config(pub Vec<ConfigEntry>);
 
-/// File System Tester used to create some configured structure in directory with 
+/// File System Tester used to create some configured structure in directory with
 /// files and links to them. FsTester can start custom test closure and remove fs
 /// structure after testing complete or fail.
 pub struct FsTester {
@@ -245,24 +245,24 @@ impl FsTester {
   fn get_random_code() -> u64 {
     rand::thread_rng().gen::<u64>()
   }
-  
+
   fn create_dir(dirname: &str) -> std_result::Result<(), io::Error> {
     let dir_builder = DirBuilder::new();
     dir_builder.create(dirname)?;
-  
+
     Ok(())
   }
 
   fn create_file(file_name: &str, content: &[u8]) -> std_result::Result<String, io::Error> {
     let mut file = File::create(&file_name)?;
     file.write_all(content)?;
-  
+
     Ok(String::from(file_name))
   }
 
   fn create_link(link_name: &str, target_name: &str) -> std_result::Result<String, io::Error> {
     fs::hard_link(target_name, link_name)?; // TODO: try to use platform based softlink
-  
+
     Ok(String::from(link_name))
   }
 
@@ -283,9 +283,9 @@ impl FsTester {
       format!("{}/{}", parent_path, directory_conf.name)
     };
     Self::create_dir(&dir_path)?;
-    
+
     for entry in directory_conf.content.iter() {
-      let mut buffer: Vec<u8> = Vec::new(); // placed here to satisfy lifetime 
+      let mut buffer: Vec<u8> = Vec::new(); // placed here to satisfy lifetime
                                             //requrement propbably better way existing
       let result = match entry {
         ConfigEntry::Directory(conf) =>
@@ -319,9 +319,9 @@ impl FsTester {
 
   /// Config parser
   /// config can be string in yaml or json format:
-  /// 
+  ///
   /// ## Example for yaml
-  /// 
+  ///
   /// ```rust
   /// # use rfs_tester::{FsTester, FsTesterError};
   /// # use rfs_tester::rfs::fs_tester::{ Config, ConfigEntry, DirectoryConf, FileConf, LinkConf, FileContent };
@@ -332,11 +332,11 @@ impl FsTester {
   ///         - file:
   ///             name: test.txt
   ///             content:
-  ///               inline_bytes:            
-  ///                 - 116            
-  ///                 - 101            
-  ///                 - 115            
-  ///                 - 116            
+  ///               inline_bytes:
+  ///                 - 116
+  ///                 - 101
+  ///                 - 115
+  ///                 - 116
   /// ";
   /// # let test_conf = Config(vec!(ConfigEntry::Directory(
   /// #   DirectoryConf {
@@ -345,7 +345,7 @@ impl FsTester {
   /// #       ConfigEntry::File(
   /// #         FileConf {
   /// #           name: String::from("test.txt"),
-  /// #           content: 
+  /// #           content:
   /// #             FileContent::InlineBytes(
   /// #               String::from("test").into_bytes(),
   /// #             )
@@ -354,16 +354,16 @@ impl FsTester {
   /// #     ),
   /// #   }
   /// # )));
-  /// #   
+  /// #
   /// # assert_eq!(test_conf, FsTester::parse_config(simple_conf_str).unwrap());
   /// ```
-  /// 
+  ///
   /// ## Example for json
-  /// 
+  ///
   /// ```rust
   /// # use rfs_tester::{FsTester, FsTesterError};
   /// # use rfs_tester::rfs::fs_tester::{ Config, ConfigEntry, DirectoryConf, FileConf, LinkConf, FileContent };
-  /// let simple_conf_str = 
+  /// let simple_conf_str =
   ///   "[{\"directory\":{\"name\":\"test\",\"content\":[{\"file\":{\"name\":\"test.txt\",\"content\":{\"inline_bytes\":[116,101,115,116]}}}]}}]";
   /// # let test_conf = Config(vec!(ConfigEntry::Directory(
   /// #   DirectoryConf {
@@ -372,7 +372,7 @@ impl FsTester {
   /// #       ConfigEntry::File(
   /// #         FileConf {
   /// #           name: String::from("test.txt"),
-  /// #           content: 
+  /// #           content:
   /// #             FileContent::InlineBytes(
   /// #               String::from("test").into_bytes(),
   /// #             )
@@ -381,22 +381,22 @@ impl FsTester {
   /// #     ),
   /// #   }
   /// # )));
-  /// # 
+  /// #
   /// # assert_eq!(test_conf, FsTester::parse_config(simple_conf_str).unwrap());
-  /// 
+  ///
   /// ```
   pub fn parse_config(config_str: &str) -> Result<Config> {
     // detect format parse and return config instance
     match config_str.chars().next() {
       Some('{') => serde_json::from_str(config_str).or_else(|error| Err(error.into())),
       Some(_) => serde_yaml::from_str(config_str).or_else(|error| Err(error.into())),
-      None => Err(FsTesterError::EmptyConfig.into()), 
+      None => Err(FsTesterError::EmptyConfig.into()),
     }
   }
-  
+
   /// create the test directory, files and link set
   /// config_str - configuration of test directory in yaml or json format
-  /// start_point - directory name where will create testing directory, it should 
+  /// start_point - directory name where will create testing directory, it should
   ///               presents in FS.
   pub fn new(config_str: &str, start_point: &str) -> FsTester {
     let config: Config = match Self::parse_config(config_str) {
@@ -418,7 +418,7 @@ impl FsTester {
     let zero_level_config_ref: Option<&ConfigEntry> = config.0.iter().next();
     let directory_conf = match zero_level_config_ref {
       Some(entry) => match entry {
-        ConfigEntry::File(_) | ConfigEntry::Link(_) => 
+        ConfigEntry::File(_) | ConfigEntry::Link(_) =>
           // return Err(FsTesterError::ShouldFromDirectory.into()),
           panic!("Config should start from containing directory"),
         ConfigEntry::Directory(conf) => conf
@@ -433,12 +433,12 @@ impl FsTester {
   }
 
   /// Start test_proc function. The test unit can define as closure parameter of **perform_fs_test**.
-  /// The **dirname** closure parameter is name of generated temporary test directory which contains 
+  /// The **dirname** closure parameter is name of generated temporary test directory which contains
   /// fs units set. We cannot know full name before testing start because it has random number in the end of name.
   /// FsTester has known it after instance build.
-  /// 
+  ///
   /// ## Example
-  /// 
+  ///
   /// ```rust
   /// use std::fs;
   /// # use rfs_tester::{FsTester};
@@ -454,16 +454,16 @@ impl FsTester {
   ///
   /// let tester = FsTester::new(YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML, ".");
   /// tester.perform_fs_test(|dirname| {
-  /// //                      ^^^^^^^ name with appended random at the end of name 
+  /// //                      ^^^^^^^ name with appended random at the end of name
   ///   let inner_file_name = format!("{}/{}", dirname, "test_from_cargo.toml");
   ///   let metadata = fs::metadata(inner_file_name)?;
-  ///   
+  ///
   ///   assert!(metadata.len() > 0);
   ///   Ok(())
   /// });
-  ///   
+  ///
   /// ```
-  pub fn perform_fs_test<F>(&self, test_proc: F) 
+  pub fn perform_fs_test<F>(&self, test_proc: F)
     where F: Fn(&str) -> io::Result<()>,
   {
     let dirname: &str = &self.base_dir;
@@ -479,7 +479,7 @@ impl FsTester {
 impl Drop for FsTester {
   fn drop(&mut self) {
     if let Err(_) = Self::delete_test_set(&self.base_dir) {
-      // TODO: handle delete directory but cannot figure out how and what to do right now. Sorry.  
+      // TODO: handle delete directory but cannot figure out how and what to do right now. Sorry.
     }
   }
 }
@@ -506,7 +506,7 @@ mod tests {
             content:
               original_file: Cargo.toml
   ";
-  
+
   #[test]
   #[should_panic(expected = "Config should not be empty")]
   fn constructor_should_throw_error_when_empty_config() {
@@ -528,7 +528,7 @@ mod tests {
         content:
           empty:
     ";
-    
+
     FsTester::new(config_started_from_file, ".");
   }
 
@@ -540,7 +540,7 @@ mod tests {
         name: test_link.txt
         target: test.txt
     ";
-    
+
     FsTester::new(config_started_from_file, ".");
   }
 
@@ -587,11 +587,11 @@ mod tests {
         - file:
             name: test.txt
             content:
-              inline_bytes:            
-              - 116            
-              - 101            
-              - 115            
-              - 116            
+              inline_bytes:
+              - 116
+              - 101
+              - 115
+              - 116
     ";
     let test_conf = Config(vec!(ConfigEntry::Directory(
       DirectoryConf {
@@ -600,7 +600,7 @@ mod tests {
           ConfigEntry::File(
             FileConf {
               name: String::from("test.txt"),
-              content: 
+              content:
                 FileContent::InlineBytes(
                   String::from("test").into_bytes(),
                 )
@@ -622,7 +622,7 @@ mod tests {
         - file:
             name: test.txt
             content:
-              inline_text: test            
+              inline_text: test
     ";
     let test_conf = Config(vec!(ConfigEntry::Directory(
       DirectoryConf {
@@ -631,7 +631,7 @@ mod tests {
           ConfigEntry::File(
             FileConf {
               name: String::from("test.txt"),
-              content: 
+              content:
                 FileContent::InlineText(
                   String::from("test"),
                 )
@@ -653,7 +653,7 @@ mod tests {
         - file:
             name: test.txt
             content:
-              original_file: sample_test.txt            
+              original_file: sample_test.txt
     ";
     let test_conf = Config(vec!(ConfigEntry::Directory(
       DirectoryConf {
@@ -662,7 +662,7 @@ mod tests {
           ConfigEntry::File(
             FileConf {
               name: String::from("test.txt"),
-              content: 
+              content:
                 FileContent::OriginalFile(
                   String::from("sample_test.txt"),
                 )
@@ -684,7 +684,7 @@ mod tests {
         - file:
             name: test.txt
             content:
-              empty:            
+              empty:
     ";
     let test_conf = Config(vec!(ConfigEntry::Directory(
       DirectoryConf {
@@ -693,7 +693,7 @@ mod tests {
           ConfigEntry::File(
             FileConf {
               name: String::from("test.txt"),
-              content: 
+              content:
                 FileContent::Empty
             }
           )
@@ -706,7 +706,7 @@ mod tests {
 
   #[test]
   fn parser_should_accept_json_config_with_directory_and_file() {
-    let simple_conf_str = 
+    let simple_conf_str =
       "[{\"directory\":{\"name\":\"test\",\"content\":[{\"file\":{\"name\":\"test.txt\",\"content\":{\"inline_bytes\":[116,101,115,116]}}}]}}]";
     let test_conf = Config(vec!(ConfigEntry::Directory(
       DirectoryConf {
@@ -715,7 +715,7 @@ mod tests {
           ConfigEntry::File(
             FileConf {
               name: String::from("test.txt"),
-              content: 
+              content:
                 FileContent::InlineBytes(
                   String::from("test").into_bytes(),
                 )
@@ -737,11 +737,11 @@ mod tests {
         - file:
             name: test.txt
             content:
-              inline_bytes:            
-              - 116            
-              - 101            
-              - 115            
-              - 116            
+              inline_bytes:
+              - 116
+              - 101
+              - 115
+              - 116
         - link:
             name: test_link.txt
             target: test.txt
@@ -753,7 +753,7 @@ mod tests {
           ConfigEntry::File(
             FileConf {
               name: String::from("test.txt"),
-              content: 
+              content:
                 FileContent::InlineBytes(
                   String::from("test").into_bytes(),
                 )
@@ -792,7 +792,7 @@ mod tests {
     tester.perform_fs_test(|dirname| {
       let inner_file_name = format!("{}/{}", dirname, "test_from_cargo.toml");
       let metadata = fs::metadata(inner_file_name)?;
-      
+
       assert!(metadata.len() > 0);
       Ok(())
     });
@@ -807,7 +807,7 @@ mod tests {
     tester.perform_fs_test(|dirname| {
       let inner_file_name = format!("{}/{}", dirname, "test_from_cargo.toml");
       let metadata = fs::metadata(inner_file_name)?;
-      
+
       assert!(metadata.len() == 0);
       Ok(())
     });
@@ -815,7 +815,7 @@ mod tests {
 
   // //////////////////////////////////////////////////////////////////////////////////
   // This test need to explore the yaml format of config string.
-  // To see serialized string from some config 
+  // To see serialized string from some config
   // you need write the config object in test_conf and change assert_ne! to assert_eq!.
   // Serialized result will be show in error message. This is not pretty, but very fast.
   // //////////////////////////////////////////////////////////////////////////////////
@@ -829,7 +829,7 @@ mod tests {
           ConfigEntry::File(
             FileConf {
               name: String::from("test.txt"),
-              content: 
+              content:
                 FileContent::OriginalFile(String::from("Cargo.toml"))
             }
           )
@@ -841,7 +841,7 @@ mod tests {
   }
 
   // This test need to explore the json format of config string.
-  // To see serialized string from some config 
+  // To see serialized string from some config
   // you need write the config object in test_conf and change assert_ne! to assert_eq!.
   // Serialized result will be show in error message. This is not pretty, but very fast.
   #[test]
@@ -854,7 +854,7 @@ mod tests {
           ConfigEntry::File(
             FileConf {
               name: String::from("test.txt"),
-              content: 
+              content:
                 FileContent::OriginalFile(String::from("Cargo.toml"))
             }
           )
