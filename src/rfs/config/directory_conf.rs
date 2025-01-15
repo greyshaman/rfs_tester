@@ -39,9 +39,9 @@ use super::config_entry::ConfigEntry;
 /// ```
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct DirectoryConf {
-  /// Directory name.
-  pub name: String,
+    /// Directory name.
+    pub name: String,
 
-  /// The directory content can contain a list of various entries.
-  pub content: Vec<ConfigEntry>,
+    /// The directory content can contain a list of various entries.
+    pub content: Vec<ConfigEntry>,
 }

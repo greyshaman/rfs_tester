@@ -84,6 +84,6 @@ use crate::rfs::file_content::FileContent;
 /// ```
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct FileConf {
-  pub name: String,
-  pub content: FileContent,
+    pub name: String,
+    pub content: FileContent,
 }

@@ -21,6 +21,6 @@ use serde::{Deserialize, Serialize};
 /// ```
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct LinkConf {
-  pub name: String,
-  pub target: String,
+    pub name: String,
+    pub target: String,
 }
