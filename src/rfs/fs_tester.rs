@@ -1,655 +1,592 @@
-use std::fs::{self, DirBuilder, File};
-use std::io::{self, Write, Read};
-use std::result as std_result;
 use rand::Rng;
-use serde::{Serialize, Deserialize};
+use std::fs::{self, DirBuilder, File};
+use std::io::{self, Read, Write};
 use std::path::Path;
+use std::result as std_result;
 
 use crate::rfs::fs_tester_error::FsTesterError;
 
 use super::config::config_entry::ConfigEntry;
+use super::config::configuration::Configuration;
 use super::config::directory_conf::DirectoryConf;
 use super::file_content::FileContent;
 
 /// Customized result type to handle config parse error
 pub type Result<T> = std_result::Result<T, Box<dyn std::error::Error>>;
 
-/// File System config structure to contains directories, files and links
-/// to execute tests with fs io operations
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
-pub struct Config(pub Vec<ConfigEntry>);
-
 /// File System Tester used to create some configured structure in directory with
 /// files and links to them. FsTester can start custom test closure and remove fs
 /// structure after testing complete or fail.
 pub struct FsTester {
-  pub config: Config,
-  pub base_dir: String,
+    pub config: Configuration,
+    pub base_dir: String,
 }
 
 impl FsTester {
-  fn get_random_code() -> u64 {
-    rand::thread_rng().gen::<u64>()
-  }
+    fn get_random_code() -> u64 {
+        rand::thread_rng().gen::<u64>()
+    }
 
-  fn create_dir(dirname: &str) -> std_result::Result<(), io::Error> {
-    let dir_builder = DirBuilder::new();
-    dir_builder.create(dirname)?;
+    fn create_dir(dirname: &str) -> std_result::Result<(), io::Error> {
+        let dir_builder = DirBuilder::new();
+        dir_builder.create(dirname)?;
 
-    Ok(())
-  }
+        Ok(())
+    }
 
-  fn create_file(file_name: &str, content: &[u8]) -> std_result::Result<String, io::Error> {
-    let mut file = File::create(&file_name)?;
-    file.write_all(content)?;
+    fn create_file(file_name: &str, content: &[u8]) -> std_result::Result<String, io::Error> {
+        let mut file = File::create(&file_name)?;
+        file.write_all(content)?;
 
-    Ok(String::from(file_name))
-  }
+        Ok(String::from(file_name))
+    }
 
-  fn create_link(link_name: &str, target_name: &str) -> std_result::Result<String, io::Error> {
-    fs::hard_link(target_name, link_name)?; // TODO: try to use platform based softlink
+    fn create_link(link_name: &str, target_name: &str) -> std_result::Result<String, io::Error> {
+        fs::hard_link(target_name, link_name)?; // TODO: try to use platform based softlink
 
-    Ok(String::from(link_name))
-  }
+        Ok(String::from(link_name))
+    }
 
-  fn delete_test_set(dirname: &str) -> std_result::Result<(), io::Error> {
-    fs::remove_dir_all(dirname)?;
-    Ok(())
-  }
+    fn delete_test_set(dirname: &str) -> std_result::Result<(), io::Error> {
+        fs::remove_dir_all(dirname)?;
+        Ok(())
+    }
 
-  fn build_directory(
-    directory_conf: &DirectoryConf,
-    parent_path: &str,
-    level: i32
-  ) -> std_result::Result<String, io::Error> {
-    let dir_path = if level == 0 {
-      let uniq_code = Self::get_random_code();
-      format!("{}/{}_{}", parent_path, directory_conf.name, uniq_code)
-    } else {
-      format!("{}/{}", parent_path, directory_conf.name)
-    };
-    Self::create_dir(&dir_path)?;
+    fn build_directory(
+        directory_conf: &DirectoryConf,
+        parent_path: &str,
+        level: i32,
+    ) -> std_result::Result<String, io::Error> {
+        let dir_path = if level == 0 {
+            let uniq_code = Self::get_random_code();
+            format!("{}/{}_{}", parent_path, directory_conf.name, uniq_code)
+        } else {
+            format!("{}/{}", parent_path, directory_conf.name)
+        };
+        Self::create_dir(&dir_path)?;
 
-    for entry in directory_conf.content.iter() {
-      let mut buffer: Vec<u8> = Vec::new(); // placed here to satisfy lifetime
-                                            //requrement propbably better way existing
-      let result = match entry {
-        ConfigEntry::Directory(conf) =>
-          Self::build_directory(conf, &dir_path, level + 1),
-        ConfigEntry::File(conf) => {
-          let file_name: String = format!("{}/{}", &dir_path, conf.name);
-          let content: &[u8] = match &conf.content {
-            FileContent::InlineBytes(data) => data,
-            FileContent::InlineText(text) => text.as_bytes(),
-            FileContent::OriginalFile(file_path) => {
-              let mut original_file = File::open(file_path)?;
-              original_file.read_to_end(&mut buffer)?;
-              &buffer
+        for entry in directory_conf.content.iter() {
+            let mut buffer: Vec<u8> = Vec::new(); // placed here to satisfy lifetime
+                                                  //requrement propbably better way existing
+            let result = match entry {
+                ConfigEntry::Directory(conf) => Self::build_directory(conf, &dir_path, level + 1),
+                ConfigEntry::File(conf) => {
+                    let file_name: String = format!("{}/{}", &dir_path, conf.name);
+                    let content: &[u8] = match &conf.content {
+                        FileContent::InlineBytes(data) => data,
+                        FileContent::InlineText(text) => text.as_bytes(),
+                        FileContent::OriginalFile(file_path) => {
+                            let mut original_file = File::open(file_path)?;
+                            original_file.read_to_end(&mut buffer)?;
+                            &buffer
+                        }
+                        FileContent::Empty => &[],
+                    };
+                    Self::create_file(&file_name, &content)
+                }
+                ConfigEntry::Link(conf) => {
+                    let link_name = format!("{}/{}", &dir_path, conf.name);
+                    Self::create_link(&link_name, &conf.target)
+                }
+            };
+            if let Err(e) = result {
+                panic!("{}", e);
             }
-            FileContent::Empty => &[]
-          };
-          Self::create_file(&file_name, &content)
         }
-        ConfigEntry::Link(conf) => {
-          let link_name = format!("{}/{}", &dir_path, conf.name);
-          Self::create_link(&link_name, &conf.target)
-        },
-      };
-      if let Err(e) = result {
-        panic!("{}", e);
-      }
+
+        Ok(dir_path)
     }
 
-    Ok(dir_path)
-  }
-
-  /// Config parser
-  /// config can be string in yaml or json format:
-  ///
-  /// ## Example for yaml
-  ///
-  /// ```rust
-  /// # use rfs_tester::{FsTester, FsTesterError};
-  /// # use rfs_tester::rfs::fs_tester::{ Config, ConfigEntry, DirectoryConf, FileConf, LinkConf, FileContent };
-  /// let simple_conf_str = "---
-  ///   - directory:
-  ///       name: test
-  ///       content:
-  ///         - file:
-  ///             name: test.txt
-  ///             content:
-  ///               inline_bytes:
-  ///                 - 116
-  ///                 - 101
-  ///                 - 115
-  ///                 - 116
-  /// ";
-  /// # let test_conf = Config(vec!(ConfigEntry::Directory(
-  /// #   DirectoryConf {
-  /// #     name: String::from("test"),
-  /// #     content: vec!(
-  /// #       ConfigEntry::File(
-  /// #         FileConf {
-  /// #           name: String::from("test.txt"),
-  /// #           content:
-  /// #             FileContent::InlineBytes(
-  /// #               String::from("test").into_bytes(),
-  /// #             )
-  /// #         }
-  /// #       )
-  /// #     ),
-  /// #   }
-  /// # )));
-  /// #
-  /// # assert_eq!(test_conf, FsTester::parse_config(simple_conf_str).unwrap());
-  /// ```
-  ///
-  /// ## Example for json
-  ///
-  /// ```rust
-  /// # use rfs_tester::{FsTester, FsTesterError};
-  /// # use rfs_tester::rfs::fs_tester::{ Config, ConfigEntry, DirectoryConf, FileConf, LinkConf, FileContent };
-  /// let simple_conf_str =
-  ///   "[{\"directory\":{\"name\":\"test\",\"content\":[{\"file\":{\"name\":\"test.txt\",\"content\":{\"inline_bytes\":[116,101,115,116]}}}]}}]";
-  /// # let test_conf = Config(vec!(ConfigEntry::Directory(
-  /// #   DirectoryConf {
-  /// #     name: String::from("test"),
-  /// #     content: vec!(
-  /// #       ConfigEntry::File(
-  /// #         FileConf {
-  /// #           name: String::from("test.txt"),
-  /// #           content:
-  /// #             FileContent::InlineBytes(
-  /// #               String::from("test").into_bytes(),
-  /// #             )
-  /// #         }
-  /// #       )
-  /// #     ),
-  /// #   }
-  /// # )));
-  /// #
-  /// # assert_eq!(test_conf, FsTester::parse_config(simple_conf_str).unwrap());
-  ///
-  /// ```
-  pub fn parse_config(config_str: &str) -> Result<Config> {
-    // detect format parse and return config instance
-    match config_str.chars().next() {
-      Some('{') => serde_json::from_str(config_str).or_else(|error| Err(error.into())),
-      Some(_) => serde_yaml::from_str(config_str).or_else(|error| Err(error.into())),
-      None => Err(FsTesterError::EmptyConfig.into()),
+    /// Config parser
+    /// config can be string in yaml or json format:
+    ///
+    /// # Example for yaml
+    ///
+    /// ```rust
+    /// # use rfs_tester::{FsTester, FsTesterError, FileContent};
+    /// # use rfs_tester::config::{Configuration, ConfigEntry, DirectoryConf, FileConf, LinkConf};
+    /// let simple_conf_str = "---
+    ///   - !directory
+    ///       name: test
+    ///       content:
+    ///         - !file
+    ///             name: test.txt
+    ///             content:
+    ///               !inline_bytes
+    ///                 - 116
+    ///                 - 101
+    ///                 - 115
+    ///                 - 116
+    /// ";
+    /// let test_conf = Configuration(vec!(ConfigEntry::Directory(
+    /// #   DirectoryConf {
+    /// #     name: String::from("test"),
+    /// #     content: vec!(
+    /// #       ConfigEntry::File(
+    /// #         FileConf {
+    /// #           name: String::from("test.txt"),
+    /// #           content:
+    /// #             FileContent::InlineBytes(
+    /// #               String::from("test").into_bytes(),
+    /// #             )
+    /// #         }
+    /// #       )
+    /// #     ),
+    /// #   }
+    /// # )));
+    /// # assert_eq!(test_conf, FsTester::parse_config(simple_conf_str).unwrap());
+    /// ```
+    ///
+    /// ## Example for json
+    ///
+    /// ```rust
+    /// use rfs_tester::{FsTester, FsTesterError, FileContent};
+    /// use rfs_tester::config::{Configuration, ConfigEntry, DirectoryConf, FileConf, LinkConf};
+    /// let simple_conf_str =
+    ///   "[{\"directory\":{\"name\":\"test\",\"content\":[{\"file\":{\"name\":\"test.txt\",\"content\":{\"inline_bytes\":[116,101,115,116]}}}]}}]";
+    /// # let test_conf = Configuration(vec!(ConfigEntry::Directory(
+    /// #   DirectoryConf {
+    /// #     name: String::from("test"),
+    /// #     content: vec!(
+    /// #       ConfigEntry::File(
+    /// #         FileConf {
+    /// #           name: String::from("test.txt"),
+    /// #           content:
+    /// #             FileContent::InlineBytes(
+    /// #               String::from("test").into_bytes(),
+    /// #             )
+    /// #         }
+    /// #       )
+    /// #     ),
+    /// #   }
+    /// # )));
+    /// #
+    /// # assert_eq!(test_conf, FsTester::parse_config(simple_conf_str).unwrap());
+    ///
+    /// ```
+    pub fn parse_config(config_str: &str) -> Result<Configuration> {
+        // detect format parse and return config instance
+        match config_str.chars().next() {
+            Some('{') | Some('[') => {
+                serde_json::from_str(config_str).or_else(|error| Err(error.into()))
+            }
+            Some(_) => serde_yaml::from_str(config_str).or_else(|error| Err(error.into())),
+            None => Err(FsTesterError::EmptyConfig.into()),
+        }
     }
-  }
 
-  /// create the test directory, files and link set
-  /// config_str - configuration of test directory in yaml or json format
-  /// start_point - directory name where will create testing directory, it should
-  ///               presents in FS.
-  pub fn new(config_str: &str, start_point: &str) -> FsTester {
-    let config: Config = match Self::parse_config(config_str) {
-      Ok(conf) => conf,
-      Err(error) => panic!("{}", error),
-    };
-    let base_dir = if start_point.len() == 0 {
-      String::from(".")
-    } else {
-      if Path::new(start_point).is_dir() {
-        String::from(start_point)
-      } else {
-        // return Err(FsTesterError::BaseDirNotFound.into());
-        panic!("Base directory not found!");
-      }
-    };
+    /// create the test directory, files and link set
+    /// config_str - configuration of test directory in yaml or json format
+    /// start_point - directory name where will create testing directory, it should
+    ///               presents in FS.
+    pub fn new(config_str: &str, start_point: &str) -> FsTester {
+        let config: Configuration = match Self::parse_config(config_str) {
+            Ok(conf) => conf,
+            Err(error) => panic!("{}", error),
+        };
+        let base_dir = if start_point.len() == 0 {
+            String::from(".")
+        } else {
+            if Path::new(start_point).is_dir() {
+                String::from(start_point)
+            } else {
+                // return Err(FsTesterError::BaseDirNotFound.into());
+                panic!("Base directory not found!");
+            }
+        };
 
-    // check if config started from single directory
-    let zero_level_config_ref: Option<&ConfigEntry> = config.0.iter().next();
-    let directory_conf = match zero_level_config_ref {
-      Some(entry) => match entry {
-        ConfigEntry::File(_) | ConfigEntry::Link(_) =>
-          // return Err(FsTesterError::ShouldFromDirectory.into()),
-          panic!("Config should start from containing directory"),
-        ConfigEntry::Directory(conf) => conf
-      }
-      // None => return Err(FsTesterError::EmptyConfig.into()),
-      None => panic!("Config should not be empty"),
-    };
+        // check if config started from single directory
+        let zero_level_config_ref: Option<&ConfigEntry> = config.0.iter().next();
+        let directory_conf = match zero_level_config_ref {
+            Some(entry) => match entry {
+                ConfigEntry::File(_) | ConfigEntry::Link(_) =>
+                // return Err(FsTesterError::ShouldFromDirectory.into()),
+                {
+                    panic!("Config should start from containing directory")
+                }
+                ConfigEntry::Directory(conf) => conf,
+            },
+            // None => return Err(FsTesterError::EmptyConfig.into()),
+            None => panic!("Config should not be empty"),
+        };
 
-    let base_dir = Self::build_directory(&directory_conf, &base_dir, 0).unwrap();
+        let base_dir = Self::build_directory(&directory_conf, &base_dir, 0).unwrap();
 
-    FsTester { config, base_dir }
-  }
-
-  /// Start test_proc function. The test unit can define as closure parameter of **perform_fs_test**.
-  /// The **dirname** closure parameter is name of generated temporary test directory which contains
-  /// fs units set. We cannot know full name before testing start because it has random number in the end of name.
-  /// FsTester has known it after instance build.
-  ///
-  /// ## Example
-  ///
-  /// ```rust
-  /// use std::fs;
-  /// # use rfs_tester::{FsTester};
-  /// const YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML: &str = "---
-  /// - directory:
-  ///     name: test
-  ///     content:
-  ///       - file:
-  ///           name: test_from_cargo.toml
-  ///           content:
-  ///             original_file: Cargo.toml
-  ///  ";
-  ///
-  /// let tester = FsTester::new(YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML, ".");
-  /// tester.perform_fs_test(|dirname| {
-  /// //                      ^^^^^^^ name with appended random at the end of name
-  ///   let inner_file_name = format!("{}/{}", dirname, "test_from_cargo.toml");
-  ///   let metadata = fs::metadata(inner_file_name)?;
-  ///
-  ///   assert!(metadata.len() > 0);
-  ///   Ok(())
-  /// });
-  ///
-  /// ```
-  pub fn perform_fs_test<F>(&self, test_proc: F)
-    where F: Fn(&str) -> io::Result<()>,
-  {
-    let dirname: &str = &self.base_dir;
-
-    if let Err(e) = test_proc(dirname) {
-      panic!("inner test has error: {}", e)
-    } else {
-      ()
+        FsTester { config, base_dir }
     }
-  }
+
+    /// Start test_proc function. The test unit can define as closure parameter of **perform_fs_test**.
+    /// The **dirname** closure parameter is name of generated temporary test directory which contains
+    /// fs units set. We cannot know full name before testing start because it has random number in the end of name.
+    /// FsTester has known it after instance build.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use std::fs;
+    /// # use rfs_tester::FsTester;
+    /// const YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML: &str = "---
+    /// - !directory
+    ///     name: test
+    ///     content:
+    ///       - !file
+    ///           name: test_from_cargo.toml
+    ///           content:
+    ///             !original_file Cargo.toml
+    ///  ";
+    ///
+    /// let tester = FsTester::new(YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML, ".");
+    /// tester.perform_fs_test(|dirname| {
+    /// //                      ^^^^^^^ name with appended random at the end of name
+    ///   let inner_file_name = format!("{}/{}", dirname, "test_from_cargo.toml");
+    ///   let metadata = fs::metadata(inner_file_name)?;
+    ///
+    ///   assert!(metadata.len() > 0);
+    ///   Ok(())
+    /// });
+    ///
+    /// ```
+    pub fn perform_fs_test<F>(&self, test_proc: F)
+    where
+        F: Fn(&str) -> io::Result<()>,
+    {
+        let dirname: &str = &self.base_dir;
+
+        if let Err(e) = test_proc(dirname) {
+            panic!("inner test has error: {}", e)
+        } else {
+            ()
+        }
+    }
 }
 
 impl Drop for FsTester {
-  fn drop(&mut self) {
-    if let Err(_) = Self::delete_test_set(&self.base_dir) {
-      // TODO: handle delete directory but cannot figure out how and what to do right now. Sorry.
+    fn drop(&mut self) {
+        if let Err(_) = Self::delete_test_set(&self.base_dir) {
+            // TODO: handle delete directory but cannot figure out how and what to do right now. Sorry.
+        }
     }
-  }
 }
 
 #[cfg(test)]
 mod tests {
-  use crate::rfs::config::{file_conf::FileConf, link_conf::LinkConf};
+    use crate::rfs::config::{file_conf::FileConf, link_conf::LinkConf};
 
-use super::*;
+    use super::*;
 
-  const YAML_DIR_WITH_EMPTY_FILE: &str = "---
-  - directory:
+    const YAML_DIR_WITH_EMPTY_FILE: &str = r#"---
+  - !directory
       name: test
       content:
-        - file:
+        - !file
             name: test.txt
             content:
-              empty:
-  ";
-  const YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML: &str = "---
-  - directory:
+              !empty
+  "#;
+    const YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML: &str = "
+  - !directory
       name: test
       content:
-        - file:
+        - !file
             name: test_from_cargo.toml
             content:
-              original_file: Cargo.toml
+              !original_file Cargo.toml
   ";
 
-  #[test]
-  #[should_panic(expected = "Config should not be empty")]
-  fn constructor_should_throw_error_when_empty_config() {
-      FsTester::new("", ".");
-  }
+    #[test]
+    #[should_panic(expected = "Config should not be empty")]
+    fn constructor_should_throw_error_when_empty_config() {
+        FsTester::new("", ".");
+    }
 
-  #[test]
-  #[should_panic(expected = "Base directory not found!")]
-  fn constructor_should_panic_when_base_dir_not_found() {
-      FsTester::new(YAML_DIR_WITH_EMPTY_FILE, "unexisting_directory");
-  }
+    #[test]
+    #[should_panic(expected = "Base directory not found!")]
+    fn constructor_should_panic_when_base_dir_not_found() {
+        FsTester::new(YAML_DIR_WITH_EMPTY_FILE, "unexisting_directory");
+    }
 
-  #[test]
-  #[should_panic(expected = "Config should start from containing directory")]
-  fn constructor_should_panic_when_conf_starts_from_file() {
-    let config_started_from_file = "---
-    - file:
+    #[test]
+    #[should_panic(expected = "Config should start from containing directory")]
+    fn constructor_should_panic_when_conf_starts_from_file() {
+        let config_started_from_file = "
+    - !file
         name: test.txt
         content:
-          empty:
+          !empty
     ";
 
-    FsTester::new(config_started_from_file, ".");
-  }
+        FsTester::new(config_started_from_file, ".");
+    }
 
-  #[test]
-  #[should_panic(expected = "Config should start from containing directory")]
-  fn constructor_should_panic_when_conf_starts_from_link() {
-    let config_started_from_file = "---
-    - link:
+    #[test]
+    #[should_panic(expected = "Config should start from containing directory")]
+    fn constructor_should_panic_when_conf_starts_from_link() {
+        let config_started_from_file = "
+    - !link
         name: test_link.txt
         target: test.txt
     ";
 
-    FsTester::new(config_started_from_file, ".");
-  }
+        FsTester::new(config_started_from_file, ".");
+    }
 
-  #[test]
-  fn parser_should_accept_json_correct_simple_config() {
-      assert_eq!(
-        FsTester::parse_config("[{\"directory\":{\"name\": '.',\"content\": []}}]").unwrap(),
-        Config(vec!(ConfigEntry::Directory(
-          DirectoryConf { name: String::from("."), content: Vec::new() }
-        ))),
-      );
-  }
+    #[test]
+    fn parser_should_accept_json_correct_simple_config() {
+        assert_eq!(
+            FsTester::parse_config("[{\"directory\":{\"name\": \".\",\"content\": []}}]").unwrap(),
+            Configuration(vec!(ConfigEntry::Directory(DirectoryConf {
+                name: String::from("."),
+                content: Vec::new()
+            }))),
+        );
+    }
 
-  #[test]
-  fn serialization_for_simple_json_config() {
-      let conf: Config = Config(vec!(ConfigEntry::Directory(
-        DirectoryConf { name: String::from("."), content: Vec::new() }
-      )));
+    #[test]
+    fn serialization_for_simple_json_config() {
+        let conf: Configuration = Configuration(vec![ConfigEntry::Directory(DirectoryConf {
+            name: String::from("."),
+            content: Vec::new(),
+        })]);
 
-      assert_eq!(
-        String::from("[{\"directory\":{\"name\":\".\",\"content\":[]}}]"),
-        serde_json::to_string(&conf).unwrap(),
-      );
-  }
+        assert_eq!(
+            String::from("[{\"directory\":{\"name\":\".\",\"content\":[]}}]"),
+            serde_json::to_string(&conf).unwrap(),
+        );
+    }
 
-  #[test]
-  fn parser_should_accept_yaml_correct_simple_config() {
-      assert_eq!(
-        Config(vec!(ConfigEntry::Directory(
-          DirectoryConf { name: String::from("."), content: Vec::new() }
-        ))),
-        FsTester::parse_config(
-          "---\n- directory:\n    name: \".\"\n    content: []\n"
-        ).unwrap(),
-      );
-  }
+    #[test]
+    fn parser_should_accept_yaml_correct_simple_config() {
+        assert_eq!(
+            Configuration(vec!(ConfigEntry::Directory(DirectoryConf {
+                name: String::from("."),
+                content: Vec::new()
+            }))),
+            FsTester::parse_config("---\n- !directory\n    name: \".\"\n    content: []\n")
+                .unwrap(),
+        );
+    }
 
-  #[test]
-  fn parser_should_accept_yaml_config_with_directory_and_file_by_inline_bytes() {
-    let simple_conf_str = "---
-    - directory:
+    #[test]
+    fn parser_should_accept_yaml_config_with_directory_and_file_by_inline_bytes() {
+        let simple_conf_str = "
+    - !directory
         name: test
         content:
-        - file:
+        - !file
             name: test.txt
             content:
-              inline_bytes:
+              !inline_bytes
               - 116
               - 101
               - 115
               - 116
     ";
-    let test_conf = Config(vec!(ConfigEntry::Directory(
-      DirectoryConf {
-        name: String::from("test"),
-        content: vec!(
-          ConfigEntry::File(
-            FileConf {
-              name: String::from("test.txt"),
-              content:
-                FileContent::InlineBytes(
-                  String::from("test").into_bytes(),
-                )
-            }
-          )
-        ),
-      }
-    )));
+        let test_conf = Configuration(vec![ConfigEntry::Directory(DirectoryConf {
+            name: String::from("test"),
+            content: vec![ConfigEntry::File(FileConf {
+                name: String::from("test.txt"),
+                content: FileContent::InlineBytes(String::from("test").into_bytes()),
+            })],
+        })]);
 
-    assert_eq!(test_conf, FsTester::parse_config(simple_conf_str).unwrap());
-  }
+        assert_eq!(test_conf, FsTester::parse_config(simple_conf_str).unwrap());
+    }
 
-  #[test]
-  fn parser_should_accept_yaml_config_with_directory_and_file_by_inline_text() {
-    let simple_conf_str = "---
-    - directory:
+    #[test]
+    fn parser_should_accept_yaml_config_with_directory_and_file_by_inline_text() {
+        let simple_conf_str = "
+    - !directory
         name: test
         content:
-        - file:
+        - !file
             name: test.txt
             content:
-              inline_text: test
+              !inline_text test
     ";
-    let test_conf = Config(vec!(ConfigEntry::Directory(
-      DirectoryConf {
-        name: String::from("test"),
-        content: vec!(
-          ConfigEntry::File(
-            FileConf {
-              name: String::from("test.txt"),
-              content:
-                FileContent::InlineText(
-                  String::from("test"),
-                )
-            }
-          )
-        ),
-      }
-    )));
+        let test_conf = Configuration(vec![ConfigEntry::Directory(DirectoryConf {
+            name: String::from("test"),
+            content: vec![ConfigEntry::File(FileConf {
+                name: String::from("test.txt"),
+                content: FileContent::InlineText(String::from("test")),
+            })],
+        })]);
 
-    assert_eq!(test_conf, FsTester::parse_config(simple_conf_str).unwrap());
-  }
+        assert_eq!(test_conf, FsTester::parse_config(simple_conf_str).unwrap());
+    }
 
-  #[test]
-  fn parser_should_accept_yaml_config_with_directory_and_file_by_original_path() {
-    let simple_conf_str = "---
-    - directory:
+    #[test]
+    fn parser_should_accept_yaml_config_with_directory_and_file_by_original_path() {
+        let simple_conf_str = "
+    - !directory
         name: test
         content:
-        - file:
+        - !file
             name: test.txt
             content:
-              original_file: sample_test.txt
+              !original_file sample_test.txt
     ";
-    let test_conf = Config(vec!(ConfigEntry::Directory(
-      DirectoryConf {
-        name: String::from("test"),
-        content: vec!(
-          ConfigEntry::File(
-            FileConf {
-              name: String::from("test.txt"),
-              content:
-                FileContent::OriginalFile(
-                  String::from("sample_test.txt"),
-                )
-            }
-          )
-        ),
-      }
-    )));
+        let test_conf = Configuration(vec![ConfigEntry::Directory(DirectoryConf {
+            name: String::from("test"),
+            content: vec![ConfigEntry::File(FileConf {
+                name: String::from("test.txt"),
+                content: FileContent::OriginalFile(String::from("sample_test.txt")),
+            })],
+        })]);
 
-    assert_eq!(test_conf, FsTester::parse_config(simple_conf_str).unwrap());
-  }
+        assert_eq!(test_conf, FsTester::parse_config(simple_conf_str).unwrap());
+    }
 
-  #[test]
-  fn parser_should_accept_yaml_config_with_directory_and_file_by_empty() {
-    let simple_conf_str = "---
-    - directory:
+    #[test]
+    fn parser_should_accept_yaml_config_with_directory_and_file_by_empty() {
+        let simple_conf_str = "
+    - !directory
         name: test
         content:
-        - file:
+        - !file
             name: test.txt
             content:
-              empty:
+              !empty
     ";
-    let test_conf = Config(vec!(ConfigEntry::Directory(
-      DirectoryConf {
-        name: String::from("test"),
-        content: vec!(
-          ConfigEntry::File(
-            FileConf {
-              name: String::from("test.txt"),
-              content:
-                FileContent::Empty
-            }
-          )
-        ),
-      }
-    )));
+        let test_conf = Configuration(vec![ConfigEntry::Directory(DirectoryConf {
+            name: String::from("test"),
+            content: vec![ConfigEntry::File(FileConf {
+                name: String::from("test.txt"),
+                content: FileContent::Empty,
+            })],
+        })]);
 
-    assert_eq!(test_conf, FsTester::parse_config(simple_conf_str).unwrap());
-  }
+        assert_eq!(test_conf, FsTester::parse_config(simple_conf_str).unwrap());
+    }
 
-  #[test]
-  fn parser_should_accept_json_config_with_directory_and_file() {
-    let simple_conf_str =
+    #[test]
+    fn parser_should_accept_json_config_with_directory_and_file() {
+        let simple_conf_str =
       "[{\"directory\":{\"name\":\"test\",\"content\":[{\"file\":{\"name\":\"test.txt\",\"content\":{\"inline_bytes\":[116,101,115,116]}}}]}}]";
-    let test_conf = Config(vec!(ConfigEntry::Directory(
-      DirectoryConf {
-        name: String::from("test"),
-        content: vec!(
-          ConfigEntry::File(
-            FileConf {
-              name: String::from("test.txt"),
-              content:
-                FileContent::InlineBytes(
-                  String::from("test").into_bytes(),
-                )
-            }
-          )
-        ),
-      }
-    )));
+        let test_conf = Configuration(vec![ConfigEntry::Directory(DirectoryConf {
+            name: String::from("test"),
+            content: vec![ConfigEntry::File(FileConf {
+                name: String::from("test.txt"),
+                content: FileContent::InlineBytes(String::from("test").into_bytes()),
+            })],
+        })]);
 
-    assert_eq!(test_conf, FsTester::parse_config(simple_conf_str).unwrap());
-  }
+        assert_eq!(test_conf, FsTester::parse_config(simple_conf_str).unwrap());
+    }
 
-  #[test]
-  fn parser_should_accept_yaml_config_with_directory_and_file_and_link() {
-    let simple_conf_str = "---
-    - directory:
+    #[test]
+    fn parser_should_accept_yaml_config_with_directory_and_file_and_link() {
+        let simple_conf_str = "
+    - !directory
         name: test
         content:
-        - file:
+        - !file
             name: test.txt
             content:
-              inline_bytes:
+              !inline_bytes
               - 116
               - 101
               - 115
               - 116
-        - link:
+        - !link
             name: test_link.txt
             target: test.txt
     ";
-    let test_conf = Config(vec!(ConfigEntry::Directory(
-      DirectoryConf {
-        name: String::from("test"),
-        content: vec!(
-          ConfigEntry::File(
-            FileConf {
-              name: String::from("test.txt"),
-              content:
-                FileContent::InlineBytes(
-                  String::from("test").into_bytes(),
-                )
-            }
-          ),
-          ConfigEntry::Link(
-            LinkConf {
-              name: String::from("test_link.txt"),
-              target: String::from("test.txt"),
-            }
-          )
-        ),
-      }
-    )));
+        let test_conf = Configuration(vec![ConfigEntry::Directory(DirectoryConf {
+            name: String::from("test"),
+            content: vec![
+                ConfigEntry::File(FileConf {
+                    name: String::from("test.txt"),
+                    content: FileContent::InlineBytes(String::from("test").into_bytes()),
+                }),
+                ConfigEntry::Link(LinkConf {
+                    name: String::from("test_link.txt"),
+                    target: String::from("test.txt"),
+                }),
+            ],
+        })]);
 
-    assert_eq!(test_conf, FsTester::parse_config(simple_conf_str).unwrap());
-  }
+        assert_eq!(test_conf, FsTester::parse_config(simple_conf_str).unwrap());
+    }
 
-  #[test]
-  fn serialization_for_simple_yaml_config() {
-    let conf: Config = Config(vec!(ConfigEntry::Directory(
-      DirectoryConf { name: String::from("."), content: Vec::new() }
-    )));
+    #[test]
+    fn serialization_for_simple_yaml_config() {
+        let conf: Configuration = Configuration(vec![ConfigEntry::Directory(DirectoryConf {
+            name: String::from("."),
+            content: Vec::new(),
+        })]);
 
-    assert_eq!(
-      String::from("---\n- directory:\n    name: \".\"\n    content: []\n"),
-      serde_yaml::to_string(&conf).unwrap(),
-    );
-  }
+        assert_eq!(
+            String::from("- !directory\n  name: .\n  content: []\n"),
+            serde_yaml::to_string(&conf).unwrap(),
+        );
+    }
 
-  #[test]
-  fn start_simple_successfull_test_should_be_success() {
-    use std::fs;
+    #[test]
+    fn start_simple_successfull_test_should_be_success() {
+        use std::fs;
 
-    let tester = FsTester::new(YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML, ".");
-    tester.perform_fs_test(|dirname| {
-      let inner_file_name = format!("{}/{}", dirname, "test_from_cargo.toml");
-      let metadata = fs::metadata(inner_file_name)?;
+        let tester = FsTester::new(YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML, ".");
+        tester.perform_fs_test(|dirname| {
+            let inner_file_name = format!("{}/{}", dirname, "test_from_cargo.toml");
+            let metadata = fs::metadata(inner_file_name)?;
 
-      assert!(metadata.len() > 0);
-      Ok(())
-    });
-  }
+            assert!(metadata.len() > 0);
+            Ok(())
+        });
+    }
 
-  #[test]
-  #[should_panic]
-  fn start_simple_failed_test_should_be_success() {
-    use std::fs;
+    #[test]
+    #[should_panic]
+    fn start_simple_failed_test_should_be_success() {
+        use std::fs;
 
-    let tester = FsTester::new(YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML, ".");
-    tester.perform_fs_test(|dirname| {
-      let inner_file_name = format!("{}/{}", dirname, "test_from_cargo.toml");
-      let metadata = fs::metadata(inner_file_name)?;
+        let tester = FsTester::new(YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML, ".");
+        tester.perform_fs_test(|dirname| {
+            let inner_file_name = format!("{}/{}", dirname, "test_from_cargo.toml");
+            let metadata = fs::metadata(inner_file_name)?;
 
-      assert!(metadata.len() == 0);
-      Ok(())
-    });
-  }
+            assert!(metadata.len() == 0);
+            Ok(())
+        });
+    }
 
-  // //////////////////////////////////////////////////////////////////////////////////
-  // This test need to explore the yaml format of config string.
-  // To see serialized string from some config
-  // you need write the config object in test_conf and change assert_ne! to assert_eq!.
-  // Serialized result will be show in error message. This is not pretty, but very fast.
-  // //////////////////////////////////////////////////////////////////////////////////
-  #[test]
-  #[ignore]
-  fn yaml_config_serialization_explorer() {
-    let test_conf = Config(vec!(ConfigEntry::Directory(
-      DirectoryConf {
-        name: String::from("test"),
-        content: vec!(
-          ConfigEntry::File(
-            FileConf {
-              name: String::from("test.txt"),
-              content:
-                FileContent::OriginalFile(String::from("Cargo.toml"))
-            }
-          )
-        ),
-      }
-    )));
+    // //////////////////////////////////////////////////////////////////////////////////
+    // This test need to explore the yaml format of config string.
+    // To see serialized string from some config
+    // you need write the config object in test_conf and change assert_ne! to assert_eq!.
+    // Serialized result will be show in error message. This is not pretty, but very fast.
+    // //////////////////////////////////////////////////////////////////////////////////
+    #[test]
+    #[ignore]
+    fn yaml_config_serialization_explorer() {
+        let test_conf = Configuration(vec![ConfigEntry::Directory(DirectoryConf {
+            name: String::from("test"),
+            content: vec![ConfigEntry::File(FileConf {
+                name: String::from("test.txt"),
+                content: FileContent::OriginalFile(String::from("Cargo.toml")),
+            })],
+        })]);
 
-    assert_eq!(String::new(), serde_yaml::to_string(&test_conf).unwrap());
-  }
+        assert_eq!(String::new(), serde_yaml::to_string(&test_conf).unwrap());
+    }
 
-  // This test need to explore the json format of config string.
-  // To see serialized string from some config
-  // you need write the config object in test_conf and change assert_ne! to assert_eq!.
-  // Serialized result will be show in error message. This is not pretty, but very fast.
-  #[test]
-  #[ignore]
-  fn json_config_serialization_explorer() {
-    let test_conf = Config(vec!(ConfigEntry::Directory(
-      DirectoryConf {
-        name: String::from("test"),
-        content: vec!(
-          ConfigEntry::File(
-            FileConf {
-              name: String::from("test.txt"),
-              content:
-                FileContent::OriginalFile(String::from("Cargo.toml"))
-            }
-          )
-        ),
-      }
-    )));
+    // This test needs to explore the JSON format of the config string.
+    // To see the serialized string from a config,
+    // you need to write the config object into test_conf and change assert_ne! to assert_eq! in the code.
+    // The serialized result will be shown in the error message.
+    // While this is not very pretty, it is very fast.
+    #[test]
+    fn json_config_serialization_explorer() {
+        let test_conf = Configuration(vec![ConfigEntry::Directory(DirectoryConf {
+            name: String::from("test"),
+            content: vec![ConfigEntry::File(FileConf {
+                name: String::from("test.txt"),
+                content: FileContent::OriginalFile(String::from("Cargo.toml")),
+            })],
+        })]);
 
-    assert_eq!(String::new(), serde_json::to_string(&test_conf).unwrap());
-  }
+        let config = serde_json::to_string(&test_conf).unwrap();
+        assert!(config.contains("test.txt"));
+        assert!(config.contains("Cargo.toml"));
+    }
 }
