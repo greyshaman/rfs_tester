@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-/// File content can be presented in three ways:
+/// File content can be presented in fourth ways:
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum FileContent {
