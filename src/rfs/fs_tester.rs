@@ -14,9 +14,10 @@ use super::file_content::FileContent;
 /// Customized result type to handle config parse error
 pub type Result<T> = std_result::Result<T, Box<dyn std::error::Error>>;
 
-/// File System Tester used to create some configured structure in directory with
-/// files and links to them. FsTester can start custom test closure and remove fs
-/// structure after testing complete or fail.
+/// File System Tester is used to create a configured structure in a directory
+/// with files and links to them. It can start a custom test process
+/// and remove the file system structure after the testing is complete or fails.
+
 pub struct FsTester {
     pub config: Configuration,
     pub base_dir: String,
@@ -67,7 +68,7 @@ impl FsTester {
 
         for entry in directory_conf.content.iter() {
             let mut buffer: Vec<u8> = Vec::new(); // placed here to satisfy lifetime
-                                                  //requrement propbably better way existing
+                                                  // requirement probably better way existing
             let result = match entry {
                 ConfigEntry::Directory(conf) => Self::build_directory(conf, &dir_path, level + 1),
                 ConfigEntry::File(conf) => {
@@ -97,10 +98,10 @@ impl FsTester {
         Ok(dir_path)
     }
 
-    /// Config parser
-    /// config can be string in yaml or json format:
+    /// The configuration parser
+    /// The configuration can be in the form of a string in YAML or JSON format:
     ///
-    /// # Example for yaml
+    /// # YAML Example
     ///
     /// ```rust
     /// # use rfs_tester::{FsTester, FsTesterError, FileContent};
@@ -137,7 +138,7 @@ impl FsTester {
     /// # assert_eq!(test_conf, FsTester::parse_config(simple_conf_str).unwrap());
     /// ```
     ///
-    /// ## Example for json
+    /// ## JSON Example
     ///
     /// ```rust
     /// use rfs_tester::{FsTester, FsTesterError, FileContent};
@@ -175,10 +176,10 @@ impl FsTester {
         }
     }
 
-    /// create the test directory, files and link set
-    /// config_str - configuration of test directory in yaml or json format
-    /// start_point - directory name where will create testing directory, it should
-    ///               presents in FS.
+    /// Creates a test directory, files, and links.
+    /// config_str - The configuration of the test directory is provided in the string in YAML or JSON format
+    /// start_point - The directory name where the testing directory will be created should be specified.
+    ///               It should be present in the file system.
     pub fn new(config_str: &str, start_point: &str) -> FsTester {
         let config: Configuration = match Self::parse_config(config_str) {
             Ok(conf) => conf,
@@ -195,19 +196,19 @@ impl FsTester {
             }
         };
 
-        // check if config started from single directory
+        // Checks if the configuration starts from a single directory.
         let zero_level_config_ref: Option<&ConfigEntry> = config.0.iter().next();
         let directory_conf = match zero_level_config_ref {
             Some(entry) => match entry {
                 ConfigEntry::File(_) | ConfigEntry::Link(_) =>
                 // return Err(FsTesterError::ShouldFromDirectory.into()),
                 {
-                    panic!("Config should start from containing directory")
+                    panic!("The configuration should start from the containing directory.")
                 }
                 ConfigEntry::Directory(conf) => conf,
             },
             // None => return Err(FsTesterError::EmptyConfig.into()),
-            None => panic!("Config should not be empty"),
+            None => panic!("The configuration should not be empty."),
         };
 
         let base_dir = Self::build_directory(&directory_conf, &base_dir, 0).unwrap();
@@ -215,10 +216,11 @@ impl FsTester {
         FsTester { config, base_dir }
     }
 
-    /// Start test_proc function. The test unit can define as closure parameter of **perform_fs_test**.
-    /// The **dirname** closure parameter is name of generated temporary test directory which contains
-    /// fs units set. We cannot know full name before testing start because it has random number in the end of name.
-    /// FsTester has known it after instance build.
+    /// The test_proc function starts. The test unit is defined as a closure parameter
+    /// of the perform_fs_test function. The dirname closure parameter represents
+    /// the name of the temporary test directory that is generated and contains the fs unit set.
+    /// We don't know the full name until the testing starts, because it has a random number at the end.
+    /// FsTester will know this after the instance has been built.
     ///
     /// # Example
     ///
@@ -294,7 +296,7 @@ mod tests {
   ";
 
     #[test]
-    #[should_panic(expected = "Config should not be empty")]
+    #[should_panic(expected = "The configuration should not be empty.")]
     fn constructor_should_throw_error_when_empty_config() {
         FsTester::new("", ".");
     }
@@ -306,7 +308,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Config should start from containing directory")]
+    #[should_panic(expected = "The configuration should start from the containing directory.")]
     fn constructor_should_panic_when_conf_starts_from_file() {
         let config_started_from_file = "
     - !file
@@ -319,7 +321,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Config should start from containing directory")]
+    #[should_panic(expected = "The configuration should start from the containing directory.")]
     fn constructor_should_panic_when_conf_starts_from_link() {
         let config_started_from_file = "
     - !link
@@ -550,14 +552,7 @@ mod tests {
         });
     }
 
-    // //////////////////////////////////////////////////////////////////////////////////
-    // This test need to explore the yaml format of config string.
-    // To see serialized string from some config
-    // you need write the config object in test_conf and change assert_ne! to assert_eq!.
-    // Serialized result will be show in error message. This is not pretty, but very fast.
-    // //////////////////////////////////////////////////////////////////////////////////
     #[test]
-    #[ignore]
     fn yaml_config_serialization_explorer() {
         let test_conf = Configuration(vec![ConfigEntry::Directory(DirectoryConf {
             name: String::from("test"),
@@ -567,7 +562,9 @@ mod tests {
             })],
         })]);
 
-        assert_eq!(String::new(), serde_yaml::to_string(&test_conf).unwrap());
+        let config = serde_yaml::to_string(&test_conf).unwrap();
+        assert!(config.contains("test.txt"));
+        assert!(config.contains("Cargo.toml"));
     }
 
     // This test needs to explore the JSON format of the config string.

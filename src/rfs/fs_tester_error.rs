@@ -17,10 +17,10 @@ impl fmt::Display for FsTesterError {
     /// handle different cases
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            FsTesterError::EmptyConfig => write!(f, "Config should not be empty"),
+            FsTesterError::EmptyConfig => write!(f, "The configuration should not be empty."),
             FsTesterError::BaseDirNotFound => write!(f, "Base directory not found!"),
             FsTesterError::ShouldFromDirectory => {
-                write!(f, "Config should start from containing directory")
+                write!(f, "The configuration should start from the containing directory.")
             } // FsTesterError::ParseYaml => write!(f, "Config is not satisfy the yaml format"),
               // FsTesterError::ParseJson(ref e) => e.fmt(f),
               // FsTesterError::Io(ref e) => e.fmt(f),
