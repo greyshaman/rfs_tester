@@ -116,26 +116,35 @@ When we want to test files, directories, and links in the created sandbox, we ne
 Example:
 
 ```rust
-use std::fs;
-const YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML: &str = "---
-- directory:
-    name: test
-    content:
-      - file:
-          name: test_from_cargo.toml
-          content:
-            original_file: Cargo.toml
- ";
+#[cfg(test)]
+mod tests {
+  use std::fs;
+  use rfs_tester::{FsTester, FileContent};
+  use rfs_tester::config::{Configuration, ConfigEntry, DirectoryConf, FileConf};
 
-let tester = FsTester::new(YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML, ".");
-tester.perform_fs_test(|dirname| {
-//                      ^^^^^^^ name with a random number at the end
-  let inner_file_name = format!("{}/{}", dirname, "test_from_cargo.toml");
-  let metadata = fs::metadata(inner_file_name)?;
+  #[test]
+  fn test_file_creation() {
+    const YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML: &str = "---
+    - directory:
+        name: test
+        content:
+          - file:
+              name: test_from_cargo.toml
+              content:
+                original_file: Cargo.toml
+     ";
 
-  assert!(metadata.len() > 0);
-  Ok(())
-});
+    let tester = FsTester::new(YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML, ".");
+    tester.perform_fs_test(|dirname| {
+    //                      ^^^^^^^ name with a random number at the end
+      let inner_file_name = format!("{}/{}", dirname, "test_from_cargo.toml");
+      let metadata = fs::metadata(inner_file_name)?;
+
+      assert!(metadata.len() > 0);
+      Ok(())
+    });
+  }
+}
 ```
 
 ## TODO

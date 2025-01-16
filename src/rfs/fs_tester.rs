@@ -17,7 +17,35 @@ pub type Result<T> = std_result::Result<T, Box<dyn std::error::Error>>;
 /// File System Tester is used to create a configured structure in a directory
 /// with files and links to them. It can start a custom test process
 /// and remove the file system structure after the testing is complete or fails.
-
+///
+/// # Example of use in tests
+///
+/// ```rust
+/// use rfs_tester::{FsTester, FileContent};
+/// use rfs_tester::config::{Configuration, ConfigEntry, DirectoryConf, FileConf};
+///
+/// #[test]
+/// fn test_file_creation() {
+///     let config_str = r#"---
+///     - !directory
+///         name: test
+///         content:
+///           - !file
+///               name: test.txt
+///               content:
+///                 !inline_text "Hello, world!"
+///     "#;
+///
+///     let tester = FsTester::new(config_str, ".");
+///
+///     tester.perform_fs_test(|dirname| {
+///         let file_path = format!("{}/test.txt", dirname);
+///         let content = std::fs::read_to_string(file_path)?;
+///         assert_eq!(content, "Hello, world!");
+///         Ok(())
+///     });
+/// }
+/// ```
 pub struct FsTester {
     pub config: Configuration,
     pub base_dir: String,
