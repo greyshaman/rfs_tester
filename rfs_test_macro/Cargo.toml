@@ -4,7 +4,7 @@ version = "1.0.0"
 authors = ["Sergey Reshetnikov <shaman@simmirra.com>"]
 categories = ["filesystem", "test", "macro"]
 keywords = ["filesystem", "test", "macro"]
-license = "MIT"
+license = "MIT OR Apache-2.0"
 edition = "2021"
 description = """
 This package provides macro to simplify usage of rfs_tester crate.
