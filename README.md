@@ -1,5 +1,7 @@
 # Rfs_tester
 
+<center><img src="https://github.com/greyshaman/rfs_tester/raw/refs/heads/master/images/sketch.webp" width="50%" alt="Rfs_tester Logo"></center>
+
 A Rust library for testing file system operations with temporary directories.
 
 ## Features
@@ -235,3 +237,7 @@ Contributions are welcome! If you'd like to contribute, please follow these step
 2. Create a new branch for your feature or bugfix.
 3. Make your changes and ensure all tests pass.
 4. Submit a pull request with a detailed description of your changes.
+
+## Licenses
+
+This project is licensed under the MIT or Apache-2.0 License.
