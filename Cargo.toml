@@ -2,7 +2,7 @@
 name = "rfs_tester"
 version = "0.3.0"
 authors = ["Sergey Reshetnikov <shaman@simmirra.com>"]
-edition = "2018"
+edition = "2021"
 repository = "https://github.com/greyshaman/rfs_tester"
 homepage = "https://github.com/greyshaman/rfs_tester"
 keywords = ["test", "file", "directory"]
@@ -18,6 +18,7 @@ After the tests are finished, the temporary directory will be deleted automatica
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+rfs_test_macro = { path = "./rfs_test_macro" }
 rand = "^0.8.5"
 serde = { version = "^1.0.217", features = ["derive"] }
 serde_json = "^1.0.135"
