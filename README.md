@@ -1,6 +1,21 @@
-# File System Tester is a package that helps you start file system testing.
+# Rfs_tester
 
-=================================================================
+A Rust library for testing file system operations with temporary directories.
+
+## Features
+
+- Create temporary directories and files for testing.
+- Automatically clean up after tests.
+- Flexible configuration using YAML or JSON.
+
+## Installation
+
+Add the dependency to your `Cargo.toml`:
+
+```toml
+[dependencies]
+rfs_tester = "0.3.0"
+```
 
 ## Overview
 
@@ -91,7 +106,7 @@ or the same using the JSON:
 
 ```json
 {
-  "name": "test_dir",
+  "name": "test",
   "content": [
     {
       "file": {
@@ -109,9 +124,9 @@ or the same using the JSON:
 }
 ```
 
-## How to define test?
+## How to Define a Test?
 
-When we want to test files, directories, and links in the created sandbox, we need to know the exact name of the outer directory. This name will be unique each time FsTester creates it. Fastest provides us with this name as a closure parameter in the perform_fs_test function.
+When we want to test files, directories, and links in the created sandbox, we need to know the exact name of the outer directory. This name will be unique each time `FsTester` creates it. `FsTester` provides us with this name as a closure parameter in the `perform_fs_test` function.
 
 Example:
 
@@ -147,6 +162,76 @@ mod tests {
 }
 ```
 
-## TODO
+## Examples
 
-- create more test units
+### Basic Usage with macro rfs_test
+
+```rust
+use rfs_test_macro::rfs_test;
+
+#[rfs_test(
+    config = r#"---
+    - !directory
+        name: test
+        content:
+          - !file
+              name: test.txt
+              content:
+                !inline_text "Hello, world!"
+    "#,
+    start_point = "."
+)]
+fn file_creation_test(dirname: &str) -> std::io::Result<()> {
+    let file_path = format!("{}/test.txt", dirname);
+    let content = std::fs::read_to_string(file_path)?;
+    assert_eq!(content, "Hello, world!");
+    Ok(())
+}
+```
+
+### Using JSON Configuration
+
+```rust
+use rfs_tester::{FsTester, FileContent};
+use rfs_tester::config::{Configuration, ConfigEntry, DirectoryConf, FileConf};
+
+#[test]
+fn test_file_creation() {
+    const JSON_CONFIG: &str = r#"
+    [
+      {
+        "directory": {
+          "name": "test",
+          "content": [
+            {
+              "file": {
+                "name": "test.txt",
+                "content": {
+                  "inline_bytes": [116, 101, 115, 116]
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+    "#;
+
+    let tester = FsTester::new(JSON_CONFIG, ".");
+    tester.perform_fs_test(|dirname| {
+        let file_path = format!("{}/test.txt", dirname);
+        let content = std::fs::read_to_string(file_path)?;
+        assert_eq!(content, "test");
+        Ok(())
+    });
+}
+```
+
+## Contributing
+
+Contributions are welcome! If you'd like to contribute, please follow these steps:
+
+1. Fork the repository.
+2. Create a new branch for your feature or bugfix.
+3. Make your changes and ensure all tests pass.
+4. Submit a pull request with a detailed description of your changes.
