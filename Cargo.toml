@@ -6,7 +6,7 @@ edition = "2021"
 repository = "https://github.com/greyshaman/rfs_tester"
 homepage = "https://github.com/greyshaman/rfs_tester"
 keywords = ["test", "file", "directory"]
-categories = ["filesystem"]
+categories = ["filesystem", "testing"]
 readme = "README.md"
 license = "MIT"
 description = """
@@ -18,8 +18,8 @@ After the tests are finished, the temporary directory will be deleted automatica
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-rfs_test_macro = { path = "./rfs_test_macro" }
+rfs_test_macro = { version = "1.0.0", path = "./rfs_test_macro" }
 rand = "^0.8.5"
 serde = { version = "^1.0.217", features = ["derive"] }
-serde_json = "^1.0.135"
+serde_json = "^1.0.136"
 serde_yaml = "^0.9.34"
