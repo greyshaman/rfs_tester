@@ -1,21 +1,22 @@
 extern crate proc_macro;
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, ItemFn, LitStr, Meta, parse::Parser};
+use syn::{parse_macro_input, ItemFn, LitStr, parse::Parser};
 use proc_macro2::TokenStream as TokenStream2;
 
 #[proc_macro_attribute]
 pub fn rfs_test(attr: TokenStream, item: TokenStream) -> TokenStream {
-    // Парсим входную функцию
+    // Parse the input function
     let input_fn = parse_macro_input!(item as ItemFn);
     let fn_name = &input_fn.sig.ident;
+    let fn_block = &input_fn.block; // Extract the function body
 
-    // Парсим атрибуты
+    // Parse the attributes
     let attr_parser = |stream: TokenStream2| -> Result<(Option<String>, Option<String>), syn::Error> {
         let mut config = None;
         let mut start_point = None;
 
-        // Парсим атрибуты вручную
+        // Manually parse the attributes
         let parser = syn::meta::parser(|meta| {
             if meta.path.is_ident("config") {
                 let value = meta.value()?;
@@ -35,13 +36,13 @@ pub fn rfs_test(attr: TokenStream, item: TokenStream) -> TokenStream {
         Ok((config, start_point))
     };
 
-    // Парсим атрибуты
+    // Parse the attributes
     let (config, start_point) = match attr_parser(attr.into()) {
         Ok(result) => result,
         Err(err) => return err.to_compile_error().into(),
     };
 
-    // Значения по умолчанию
+    // Default values
     let config = config.unwrap_or_else(|| {
         r#"---
         - !directory
@@ -56,27 +57,30 @@ pub fn rfs_test(attr: TokenStream, item: TokenStream) -> TokenStream {
     });
     let start_point = start_point.unwrap_or_else(|| ".".to_string());
 
-    // Генерируем код для обертки теста
+    // Generate the test function
     let expanded = quote! {
         #[test]
         fn #fn_name() {
             use rfs_tester::{FsTester, FileContent};
             use rfs_tester::config::{Configuration, ConfigEntry, DirectoryConf, FileConf};
 
-            // Используем переданные параметры
+            // Use the provided parameters
             let config_str = #config;
             let start_point = #start_point;
 
-            // Создаем временную файловую систему
+            // Create the temporary file system
             let tester = FsTester::new(config_str, start_point);
 
-            // Выполняем тест
+            // Run the test
             tester.perform_fs_test(|dirname| {
-                #input_fn
-                Ok(())
+                println!("Test directory: {}", dirname); // Debug output
+                #fn_block
             });
         }
     };
+
+    // Print the generated code for debugging
+    println!("Generated test function:\n{}", expanded);
 
     TokenStream::from(expanded)
 }

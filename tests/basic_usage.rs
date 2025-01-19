@@ -1,5 +1,4 @@
-use rfs_tester::config::{ConfigEntry, Configuration, DirectoryConf, FileConf};
-use rfs_tester::{FileContent, FsTester};
+use rfs_tester::FsTester;
 
 #[test]
 fn basic_test_file_creation() {
