@@ -1,7 +1,7 @@
 extern crate proc_macro;
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, ItemFn, LitStr, parse::Parser};
+use syn::{parse_macro_input, ItemFn, Expr, parse::Parser};
 use proc_macro2::TokenStream as TokenStream2;
 
 #[proc_macro_attribute]
@@ -9,10 +9,10 @@ pub fn rfs_test(attr: TokenStream, item: TokenStream) -> TokenStream {
     // Parse the input function
     let input_fn = parse_macro_input!(item as ItemFn);
     let fn_name = &input_fn.sig.ident;
-    let fn_block = &input_fn.block; // Extract the function body
+    let fn_block = &input_fn.block;
 
     // Parse the attributes
-    let attr_parser = |stream: TokenStream2| -> Result<(Option<String>, Option<String>), syn::Error> {
+    let attr_parser = |stream: TokenStream2| -> Result<(Option<Expr>, Option<Expr>), syn::Error> {
         let mut config = None;
         let mut start_point = None;
 
@@ -20,12 +20,10 @@ pub fn rfs_test(attr: TokenStream, item: TokenStream) -> TokenStream {
         let parser = syn::meta::parser(|meta| {
             if meta.path.is_ident("config") {
                 let value = meta.value()?;
-                let lit: LitStr = value.parse()?;
-                config = Some(lit.value());
+                config = Some(value.parse()?);
             } else if meta.path.is_ident("start_point") {
                 let value = meta.value()?;
-                let lit: LitStr = value.parse()?;
-                start_point = Some(lit.value());
+                start_point = Some(value.parse()?);
             } else {
                 return Err(meta.error("unsupported attribute"));
             }
@@ -43,8 +41,7 @@ pub fn rfs_test(attr: TokenStream, item: TokenStream) -> TokenStream {
     };
 
     // Default values
-    let config = config.unwrap_or_else(|| {
-        r#"---
+    let config = config.unwrap_or_else(|| syn::parse_str(r#"---
         - !directory
             name: test
             content:
@@ -52,10 +49,8 @@ pub fn rfs_test(attr: TokenStream, item: TokenStream) -> TokenStream {
                   name: test.txt
                   content:
                     !inline_text "Hello, world!"
-        "#
-        .to_string()
-    });
-    let start_point = start_point.unwrap_or_else(|| ".".to_string());
+        "#).unwrap());
+    let start_point = start_point.unwrap_or_else(|| syn::parse_str(r#"".""#).unwrap());
 
     // Generate the test function
     let expanded = quote! {
@@ -65,22 +60,18 @@ pub fn rfs_test(attr: TokenStream, item: TokenStream) -> TokenStream {
             use rfs_tester::config::{Configuration, ConfigEntry, DirectoryConf, FileConf};
 
             // Use the provided parameters
-            let config_str = #config;
-            let start_point = #start_point;
+            let config_str: &str = #config;
+            let start_point: &str = #start_point;
 
             // Create the temporary file system
             let tester = FsTester::new(config_str, start_point);
 
             // Run the test
             tester.perform_fs_test(|dirname| {
-                println!("Test directory: {}", dirname); // Debug output
                 #fn_block
             });
         }
     };
-
-    // Print the generated code for debugging
-    println!("Generated test function:\n{}", expanded);
 
     TokenStream::from(expanded)
 }
