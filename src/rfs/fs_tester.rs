@@ -1,18 +1,15 @@
 use rand::Rng;
-use std::fs::{self, DirBuilder, File};
+use std::fs::{self, hard_link, DirBuilder, File};
 use std::io::{self, Read, Write};
 use std::path::Path;
 use std::result as std_result;
 
-use crate::rfs::fs_tester_error::FsTesterError;
+use crate::rfs::fs_tester_error::{FsTesterError, Result};
 
 use super::config::config_entry::ConfigEntry;
 use super::config::configuration::Configuration;
 use super::config::directory_conf::DirectoryConf;
 use super::file_content::FileContent;
-
-/// Customized result type to handle config parse error
-pub type Result<T> = std_result::Result<T, Box<dyn std::error::Error>>;
 
 /// File System Tester is used to create a configured structure in a directory
 /// with files and links to them. It can start a custom test process
@@ -21,11 +18,11 @@ pub type Result<T> = std_result::Result<T, Box<dyn std::error::Error>>;
 /// # Example of use in tests
 ///
 /// ```rust
-/// use rfs_tester::{FsTester, FileContent};
+/// use rfs_tester::{FsTester, FileContent, FsTesterError};
 /// use rfs_tester::config::{Configuration, ConfigEntry, DirectoryConf, FileConf};
 ///
 /// #[test]
-/// fn test_file_creation() {
+/// fn test_file_creation() -> Result<(), FsTesterError> {
 ///     let config_str = r#"---
 ///     - !directory
 ///         name: test
@@ -36,7 +33,7 @@ pub type Result<T> = std_result::Result<T, Box<dyn std::error::Error>>;
 ///                 !inline_text "Hello, world!"
 ///     "#;
 ///
-///     let tester = FsTester::new(config_str, ".");
+///     let tester = FsTester::new(config_str, ".")?;
 ///
 ///     tester.perform_fs_test(|dirname| {
 ///         let file_path = format!("{}/test.txt", dirname);
@@ -44,6 +41,7 @@ pub type Result<T> = std_result::Result<T, Box<dyn std::error::Error>>;
 ///         assert_eq!(content, "Hello, world!");
 ///         Ok(())
 ///     });
+///     Ok(())
 /// }
 /// ```
 pub struct FsTester {
@@ -70,8 +68,10 @@ impl FsTester {
         Ok(String::from(file_name))
     }
 
+    /// WARNING!!! Use links with caution, as making changes to the content using a link may modify the original file.
+    /// TODO: Limit the use of links and only allow them if the intent is explicitly specified via an environment variable.
     fn create_link(link_name: &str, target_name: &str) -> std_result::Result<String, io::Error> {
-        fs::hard_link(target_name, link_name)?; // TODO: try to use platform based softlink
+        hard_link(target_name, link_name)?;
 
         Ok(String::from(link_name))
     }
@@ -200,7 +200,7 @@ impl FsTester {
                 serde_json::from_str(config_str).or_else(|error| Err(error.into()))
             }
             Some(_) => serde_yaml::from_str(config_str).or_else(|error| Err(error.into())),
-            None => Err(FsTesterError::EmptyConfig.into()),
+            None => Err(FsTesterError::empty_config()),
         }
     }
 
@@ -208,19 +208,16 @@ impl FsTester {
     /// config_str - The configuration of the test directory is provided in the string in YAML or JSON format
     /// start_point - The directory name where the testing directory will be created should be specified.
     ///               It should be present in the file system.
-    pub fn new(config_str: &str, start_point: &str) -> FsTester {
-        let config: Configuration = match Self::parse_config(config_str) {
-            Ok(conf) => conf,
-            Err(error) => panic!("{}", error),
-        };
+    pub fn new(config_str: &str, start_point: &str) -> Result<FsTester> {
+        let config: Configuration = Self::parse_config(config_str)?;
+
         let base_dir = if start_point.len() == 0 {
             String::from(".")
         } else {
             if Path::new(start_point).is_dir() {
                 String::from(start_point)
             } else {
-                // return Err(FsTesterError::BaseDirNotFound.into());
-                panic!("Base directory not found!");
+                return Err(FsTesterError::should_start_from_directory());
             }
         };
 
@@ -228,20 +225,17 @@ impl FsTester {
         let zero_level_config_ref: Option<&ConfigEntry> = config.0.iter().next();
         let directory_conf = match zero_level_config_ref {
             Some(entry) => match entry {
-                ConfigEntry::File(_) | ConfigEntry::Link(_) =>
-                // return Err(FsTesterError::ShouldFromDirectory.into()),
-                {
-                    panic!("The configuration should start from the containing directory.")
+                ConfigEntry::File(_) | ConfigEntry::Link(_) => {
+                    return Err(FsTesterError::should_start_from_directory());
                 }
                 ConfigEntry::Directory(conf) => conf,
             },
-            // None => return Err(FsTesterError::EmptyConfig.into()),
-            None => panic!("The configuration should not be empty."),
+            None => return Err(FsTesterError::empty_config()),
         };
 
         let base_dir = Self::build_directory(&directory_conf, &base_dir, 0).unwrap();
 
-        FsTester { config, base_dir }
+        Ok(FsTester { config, base_dir })
     }
 
     /// The test_proc function starts. The test unit is defined as a closure parameter
@@ -265,7 +259,7 @@ impl FsTester {
     ///             !original_file Cargo.toml
     ///  ";
     ///
-    /// let tester = FsTester::new(YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML, ".");
+    /// let tester = FsTester::new(YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML, ".").expect("Incorrect config");
     /// tester.perform_fs_test(|dirname| {
     /// //                      ^^^^^^^ name with appended random at the end of name
     ///   let inner_file_name = format!("{}/{}", dirname, "test_from_cargo.toml");
@@ -301,6 +295,7 @@ impl Drop for FsTester {
 #[cfg(test)]
 mod tests {
     use crate::rfs::config::{file_conf::FileConf, link_conf::LinkConf};
+    use crate::rfs::fs_tester_error::Result;
 
     use super::*;
 
@@ -323,21 +318,46 @@ mod tests {
               !original_file Cargo.toml
   ";
 
+    const YAML_DOUBLE_ROOT_DIRS: &str = "
+  - !directory
+      name: test
+      content:
+        - !file
+            name: test_from_cargo.toml
+            content:
+              !original_file Cargo.toml
+  - !directory
+      name: bad_dir
+      content:
+        -!file
+            name: test.txt
+            content:
+              !inline_text test
+  ";
+
     #[test]
-    #[should_panic(expected = "The configuration should not be empty.")]
     fn constructor_should_throw_error_when_empty_config() {
-        FsTester::new("", ".");
+        let res = FsTester::new("", ".");
+        assert!(res.is_err());
     }
 
     #[test]
-    #[should_panic(expected = "Base directory not found!")]
-    fn constructor_should_panic_when_base_dir_not_found() {
-        FsTester::new(YAML_DIR_WITH_EMPTY_FILE, "unexisting_directory");
+    fn constructor_should_return_error_when_base_dir_not_found() -> Result<()> {
+        let res = FsTester::new(YAML_DIR_WITH_EMPTY_FILE, "unexisting_directory");
+        assert!(res.is_err());
+        if let Err(error) = res {
+            if error.is_should_start_from_directory() {
+                Ok(())
+            } else {
+                Err(error)
+            }
+        } else {
+            panic!("Error expected but constructor returned Ok");
+        }
     }
 
     #[test]
-    #[should_panic(expected = "The configuration should start from the containing directory.")]
-    fn constructor_should_panic_when_conf_starts_from_file() {
+    fn constructor_should_return_error_when_conf_starts_from_file() -> Result<()> {
         let config_started_from_file = "
     - !file
         name: test.txt
@@ -345,19 +365,40 @@ mod tests {
           !empty
     ";
 
-        FsTester::new(config_started_from_file, ".");
+        let res = FsTester::new(config_started_from_file, ".");
+        assert!(res.is_err());
+        if let Err(error) = res {
+            if error.is_should_start_from_directory() {
+                Ok(())
+            } else {
+                Err(error)
+            }
+        } else {
+            panic!("Error expected but constructor returned Ok");
+        }
     }
 
     #[test]
-    #[should_panic(expected = "The configuration should start from the containing directory.")]
-    fn constructor_should_panic_when_conf_starts_from_link() {
+    // #[should_panic(expected = "The configuration should start from the containing directory.")]
+    fn constructor_should_return_error_when_conf_starts_from_link() -> Result<()> {
         let config_started_from_file = "
     - !link
         name: test_link.txt
         target: test.txt
     ";
 
-        FsTester::new(config_started_from_file, ".");
+        let res = FsTester::new(config_started_from_file, ".");
+        assert!(res.is_err());
+
+        if let Err(error) = res {
+            if error.is_should_start_from_directory() {
+                Ok(())
+            } else {
+                Err(error)
+            }
+        } else {
+            panic!("Error expected but constructor returned Ok");
+        }
     }
 
     #[test]
@@ -535,7 +576,9 @@ mod tests {
             ],
         })]);
 
-        assert_eq!(test_conf, FsTester::parse_config(simple_conf_str).unwrap());
+        let parsed_config = FsTester::parse_config(simple_conf_str).unwrap();
+
+        assert_eq!(test_conf, parsed_config);
     }
 
     #[test]
@@ -552,10 +595,10 @@ mod tests {
     }
 
     #[test]
-    fn start_simple_successfull_test_should_be_success() {
+    fn start_simple_successful_test_should_be_success() -> Result<()> {
         use std::fs;
 
-        let tester = FsTester::new(YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML, ".");
+        let tester = FsTester::new(YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML, ".")?;
         tester.perform_fs_test(|dirname| {
             let inner_file_name = format!("{}/{}", dirname, "test_from_cargo.toml");
             let metadata = fs::metadata(inner_file_name)?;
@@ -563,6 +606,7 @@ mod tests {
             assert!(metadata.len() > 0);
             Ok(())
         });
+        Ok(())
     }
 
     #[test]
@@ -570,7 +614,8 @@ mod tests {
     fn start_simple_failed_test_should_be_success() {
         use std::fs;
 
-        let tester = FsTester::new(YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML, ".");
+        let tester = FsTester::new(YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML, ".")
+            .expect("Configuration parsing fail");
         tester.perform_fs_test(|dirname| {
             let inner_file_name = format!("{}/{}", dirname, "test_from_cargo.toml");
             let metadata = fs::metadata(inner_file_name)?;

@@ -13,7 +13,7 @@ fn basic_test_file_creation() {
     "#;
 
     // Creates a temporary file system
-    let tester = FsTester::new(config_str, ".");
+    let tester = FsTester::new(config_str, ".").unwrap();
 
     // Performs the test
     tester.perform_fs_test(|dirname| {
