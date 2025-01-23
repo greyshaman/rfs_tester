@@ -2,6 +2,9 @@
 
 <center><img src="https://github.com/greyshaman/rfs_tester/raw/refs/heads/master/images/sketch.webp" width="50%" alt="Rfs_tester Logo"></center>
 
+[![Crates.io](https://img.shields.io/crates/v/rfs_tester)](https://crates.io/crates/rfs_tester)
+[![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](https://crates.io/crates/rfs_tester)
+
 A Rust library for testing file system operations with temporary directories.
 
 ## Features
@@ -16,7 +19,7 @@ Add the dependency to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-rfs_tester = "0.3.0"
+rfs_tester = "0.4.1"
 ```
 
 ## Overview
@@ -83,6 +86,8 @@ The same directory structure can be configured using JSON format:
 ### Directory configuration
 
 The directory structure can contain many nested directories. However, it is important to note that the first level of the configuration should begin with a single directory. This directory will serve as a sandbox container, with a name that includes a randomly generated number. Other inner components, such as directories, files, and links, should not change their original names and can continue to be used for testing purposes in the configuration.
+
+WARNING!!! Use links with caution, as making changes to the content using a link may modify the original file.
 
 Directory configuration can specify the name and content of:
 
@@ -151,7 +156,7 @@ mod tests {
                 original_file: Cargo.toml
      ";
 
-    let tester = FsTester::new(YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML, ".");
+    let tester = FsTester::new(YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML, ".").expect("Incorrect configuration");
     tester.perform_fs_test(|dirname| {
     //                      ^^^^^^^ name with a random number at the end
       let inner_file_name = format!("{}/{}", dirname, "test_from_cargo.toml");
@@ -166,7 +171,7 @@ mod tests {
 
 ## Examples
 
-### Basic Usage with macro rfs_test
+### Basic Usage with macro rfs_test_macro from [rfs_test_macro](https://crates.io/crates/rfs_test_macro) crate
 
 ```rust
 use rfs_test_macro::rfs_test;
@@ -189,6 +194,13 @@ fn file_creation_test(dirname: &str) -> std::io::Result<()> {
     assert_eq!(content, "Hello, world!");
     Ok(())
 }
+```
+
+Add dependency in Cargo.toml to use it:
+
+```toml
+[dependencies]
+rfs_test_macro = "1.1.0"
 ```
 
 ### Using JSON Configuration
@@ -219,7 +231,7 @@ fn test_file_creation() {
     ]
     "#;
 
-    let tester = FsTester::new(JSON_CONFIG, ".");
+    let tester = FsTester::new(JSON_CONFIG, ".").expect("Incorrect configuration");;
     tester.perform_fs_test(|dirname| {
         let file_path = format!("{}/test.txt", dirname);
         let content = std::fs::read_to_string(file_path)?;
