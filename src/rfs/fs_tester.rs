@@ -51,7 +51,7 @@ pub struct FsTester {
 
 impl FsTester {
     fn get_random_code() -> u64 {
-        rand::thread_rng().gen::<u64>()
+        rand::rng().random::<u64>()
     }
 
     fn create_dir(dirname: &str) -> std_result::Result<(), io::Error> {
@@ -98,7 +98,7 @@ impl FsTester {
             let mut buffer: Vec<u8> = Vec::new(); // placed here to satisfy lifetime
                                                   // requirement probably better way existing
             let result = match entry {
-                ConfigEntry::Directory(conf) => Self::build_directory(conf, &dir_path, level + 1),
+                ConfigEntry::Directory(conf) => Self::build_directory(&conf, &dir_path, level + 1),
                 ConfigEntry::File(conf) => {
                     let file_name: String = format!("{}/{}", &dir_path, conf.name);
                     let content: &[u8] = match &conf.content {
