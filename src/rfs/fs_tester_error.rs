@@ -263,7 +263,6 @@ impl From<serde_yaml::Error> for FsTesterError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io;
 
     #[test]
     fn test_empty_config_error() {
@@ -271,13 +270,73 @@ mod tests {
         assert!(error.is_config_format());
         assert_eq!(error.line(), 0);
         assert_eq!(error.column(), 0);
+        assert_eq!(error.classify(), Category::ConfigFormat);
     }
 
     #[test]
     fn test_io_error() {
-        let io_error = io::Error::new(io::ErrorKind::NotFound, "File not found");
+        let io_error = std::io::Error::new(std::io::ErrorKind::NotFound, "File not found");
         let error = FsTesterError::io_error(io_error);
         assert!(error.is_io());
-        assert_eq!(error.io_error_kind(), Some(io::ErrorKind::NotFound));
+        assert_eq!(error.io_error_kind(), Some(std::io::ErrorKind::NotFound));
+        assert_eq!(error.classify(), Category::Io);
+    }
+
+    #[test]
+    fn test_should_start_from_directory_error() {
+        let error = FsTesterError::should_start_from_directory();
+        assert!(error.is_config_format());
+        assert_eq!(error.line(), 0);
+        assert_eq!(error.column(), 0);
+        assert_eq!(error.classify(), Category::ConfigFormat);
+    }
+
+    #[test]
+    fn test_json_syntax_error() {
+        let invalid_json = "{ invalid: json }";
+        let json_error = serde_json::from_str::<serde_json::Value>(invalid_json).unwrap_err();
+
+        let error = FsTesterError::from(json_error);
+
+        assert!(error.is_syntax());
+        assert_eq!(error.classify(), Category::Syntax);
+    }
+
+    #[test]
+    fn test_json_io_error() {
+        use std::io;
+
+        let io_error = io::Error::new(io::ErrorKind::NotFound, "File not found");
+        let json_error = serde_json::Error::io(io_error);
+
+        let error = FsTesterError::from(json_error);
+
+        assert!(error.is_io());
+        assert_eq!(error.classify(), Category::Io);
+    }
+
+    #[test]
+    fn test_json_data_error() {
+        let json_data = r#"{ "number": "not_a_number" }"#;
+        let json_error = serde_json::from_str::<i32>(json_data).unwrap_err();
+
+        let error = FsTesterError::from(json_error);
+
+        assert!(error.is_syntax());
+        assert_eq!(error.classify(), Category::Syntax);
+    }
+
+    #[test]
+    fn test_yaml_syntax_error() {
+        // Пытаемся парсить невалидный YAML
+        let invalid_yaml = "invalid: yaml: [";
+        let yaml_error = serde_yaml::from_str::<serde_yaml::Value>(invalid_yaml).unwrap_err();
+
+        // Конвертируем ошибку в FsTesterError
+        let error = FsTesterError::from(yaml_error);
+
+        // Проверяем, что ошибка корректно классифицируется
+        assert!(error.is_syntax());
+        assert_eq!(error.classify(), Category::Syntax);
     }
 }
