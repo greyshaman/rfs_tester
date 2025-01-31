@@ -222,6 +222,9 @@ impl FsTester {
         };
 
         // Checks if the configuration starts from a single directory.
+        if config.0.len() != 1 {
+            return Err(FsTesterError::should_start_from_directory());
+        }
         let zero_level_config_ref: Option<&ConfigEntry> = config.0.iter().next();
         let directory_conf = match zero_level_config_ref {
             Some(entry) => match entry {
@@ -329,7 +332,7 @@ mod tests {
   - !directory
       name: bad_dir
       content:
-        -!file
+        - !file
             name: test.txt
             content:
               !inline_text test
@@ -357,6 +360,21 @@ mod tests {
     }
 
     #[test]
+    fn constructor_should_return_error_when_double_root_dir_in_config() -> Result<()> {
+        let res = FsTester::new(YAML_DOUBLE_ROOT_DIRS, ".");
+        assert!(res.is_err());
+        if let Err(error) = res {
+            if error.is_should_start_from_directory() {
+                Ok(())
+            } else {
+                Err(error)
+            }
+        } else {
+            unreachable!("res.is_ok already above handled by assert");
+        }
+    }
+
+    #[test]
     fn constructor_should_return_error_when_conf_starts_from_file() -> Result<()> {
         let config_started_from_file = "
     - !file
@@ -379,7 +397,6 @@ mod tests {
     }
 
     #[test]
-    // #[should_panic(expected = "The configuration should start from the containing directory.")]
     fn constructor_should_return_error_when_conf_starts_from_link() -> Result<()> {
         let config_started_from_file = "
     - !link
