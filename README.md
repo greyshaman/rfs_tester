@@ -40,13 +40,13 @@ The test directory structure can be configured using the YAML or JSON format.
 
 ```yaml
 ---
-  - directory:
+  - !directory
       name: test
       content:
-        - file:
+        - !file
             name: test.txt
             content:
-              inline_bytes:
+              !inline_bytes
                 - 116
                 - 101
                 - 115
@@ -98,13 +98,13 @@ Example using the YAML:
 
 ```yaml
 ---
-  - directory:
+  - !directory
       name: test
       content:
-        - file:
+        - !file
             name: test.txt
             content: empty
-        - link:
+        - !link
             name: test_link
             target: test.txt
 ```
@@ -147,13 +147,13 @@ mod tests {
   #[test]
   fn test_file_creation() {
     const YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML: &str = "---
-    - directory:
+    - !directory
         name: test
         content:
-          - file:
+          - !file
               name: test_from_cargo.toml
               content:
-                original_file: Cargo.toml
+                !original_file Cargo.toml
      ";
 
     let tester = FsTester::new(YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML, ".").expect("Incorrect configuration");
