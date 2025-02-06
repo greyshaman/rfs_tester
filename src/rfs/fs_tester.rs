@@ -2,14 +2,21 @@ use rand::Rng;
 use std::fs::{self, hard_link, DirBuilder, File};
 use std::io::{self, Read, Write};
 use std::path::Path;
-use std::result as std_result;
+use std::{env, result as std_result};
 
 use crate::rfs::fs_tester_error::{FsTesterError, Result};
 
 use super::config::config_entry::ConfigEntry;
 use super::config::configuration::Configuration;
 use super::config::directory_conf::DirectoryConf;
+use super::config::{FileConf, LinkConf};
 use super::file_content::FileContent;
+
+const LINKS_ALLOWED_VAR_NAME: &str = "LINKS_ALLOWED";
+
+struct Permissions {
+    links_allowed: bool,
+}
 
 /// File System Tester is used to create a configured structure in a directory
 /// with files and links to them. It can start a custom test process
@@ -54,14 +61,26 @@ impl FsTester {
         rand::rng().random::<u64>()
     }
 
-    fn create_dir(dirname: &str) -> std_result::Result<(), io::Error> {
+    fn create_dir(dirname: &str) -> std_result::Result<(), FsTesterError> {
         let dir_builder = DirBuilder::new();
         dir_builder.create(dirname)?;
 
         Ok(())
     }
 
-    fn create_file(file_name: &str, content: &[u8]) -> std_result::Result<String, io::Error> {
+    fn create_file(conf: &FileConf, dir_path: &str) -> std_result::Result<String, FsTesterError> {
+        let mut buffer: Vec<u8> = Vec::new();
+        let file_name: String = format!("{}/{}", dir_path, conf.name);
+        let content: &[u8] = match &conf.content {
+            FileContent::InlineBytes(data) => data,
+            FileContent::InlineText(text) => text.as_bytes(),
+            FileContent::OriginalFile(file_path) => {
+                let mut original_file = File::open(file_path)?;
+                original_file.read_to_end(&mut buffer)?;
+                &buffer
+            }
+            FileContent::Empty => &[],
+        };
         let mut file = File::create(&file_name)?;
         file.write_all(content)?;
 
@@ -69,11 +88,20 @@ impl FsTester {
     }
 
     /// WARNING!!! Use links with caution, as making changes to the content using a link may modify the original file.
-    /// TODO: Limit the use of links and only allow them if the intent is explicitly specified via an environment variable.
-    fn create_link(link_name: &str, target_name: &str) -> std_result::Result<String, io::Error> {
-        hard_link(target_name, link_name)?;
+    fn create_link(
+        conf: &LinkConf,
+        dir_path: &str,
+        permissions: &Permissions,
+    ) -> std_result::Result<String, FsTesterError> {
+        let link_name = format!("{}/{}", &dir_path, conf.name);
+        let target_name = conf.target.clone();
+        if permissions.links_allowed {
+            hard_link(target_name, link_name.clone())?;
 
-        Ok(String::from(link_name))
+            Ok(String::from(link_name))
+        } else {
+            Err(FsTesterError::not_allowed_settings())
+        }
     }
 
     fn delete_test_set(dirname: &str) -> std_result::Result<(), io::Error> {
@@ -85,7 +113,8 @@ impl FsTester {
         directory_conf: &DirectoryConf,
         parent_path: &str,
         level: i32,
-    ) -> std_result::Result<String, io::Error> {
+        permissions: &Permissions,
+    ) -> std_result::Result<String, FsTesterError> {
         let dir_path = if level == 0 {
             let uniq_code = Self::get_random_code();
             format!("{}/{}_{}", parent_path, directory_conf.name, uniq_code)
@@ -95,31 +124,20 @@ impl FsTester {
         Self::create_dir(&dir_path)?;
 
         for entry in directory_conf.content.iter() {
-            let mut buffer: Vec<u8> = Vec::new(); // placed here to satisfy lifetime
-                                                  // requirement probably better way existing
             let result = match entry {
-                ConfigEntry::Directory(conf) => Self::build_directory(&conf, &dir_path, level + 1),
-                ConfigEntry::File(conf) => {
-                    let file_name: String = format!("{}/{}", &dir_path, conf.name);
-                    let content: &[u8] = match &conf.content {
-                        FileContent::InlineBytes(data) => data,
-                        FileContent::InlineText(text) => text.as_bytes(),
-                        FileContent::OriginalFile(file_path) => {
-                            let mut original_file = File::open(file_path)?;
-                            original_file.read_to_end(&mut buffer)?;
-                            &buffer
-                        }
-                        FileContent::Empty => &[],
-                    };
-                    Self::create_file(&file_name, &content)
+                ConfigEntry::Directory(conf) => {
+                    Self::build_directory(conf, &dir_path, level + 1, permissions)
                 }
-                ConfigEntry::Link(conf) => {
-                    let link_name = format!("{}/{}", &dir_path, conf.name);
-                    Self::create_link(&link_name, &conf.target)
-                }
+                ConfigEntry::File(conf) => Self::create_file(conf, &dir_path),
+                ConfigEntry::Link(conf) => Self::create_link(conf, &dir_path, permissions),
             };
-            if let Err(e) = result {
-                panic!("{}", e);
+
+            if let Err(error) = result {
+                if level == 0 && fs::metadata(dir_path.clone())?.is_dir() {
+                    // Delete a temporary directory if an error occurred while filling it in.
+                    fs::remove_dir_all(dir_path)?;
+                }
+                return Err(error);
             }
         }
 
@@ -209,6 +227,10 @@ impl FsTester {
     /// start_point - The directory name where the testing directory will be created should be specified.
     ///               It should be present in the file system.
     pub fn new(config_str: &str, start_point: &str) -> Result<FsTester> {
+        let links_allowed =
+            env::var(LINKS_ALLOWED_VAR_NAME).unwrap_or_else(|_| "N".to_string()) != "N";
+        let permissions = Permissions { links_allowed };
+
         let config: Configuration = Self::parse_config(config_str)?;
 
         let base_dir = if start_point.len() == 0 {
@@ -236,7 +258,7 @@ impl FsTester {
             None => return Err(FsTesterError::empty_config()),
         };
 
-        let base_dir = Self::build_directory(&directory_conf, &base_dir, 0).unwrap();
+        let base_dir = Self::build_directory(&directory_conf, &base_dir, 0, &permissions)?;
 
         Ok(FsTester { config, base_dir })
     }
@@ -320,6 +342,15 @@ mod tests {
             content:
               !original_file Cargo.toml
   ";
+
+    const YAML_DIR_WITH_LINK: &str = r#"
+    - !directory
+        name: test
+        content:
+            - !link
+                name: cargo_link
+                target: Cargo.toml
+    "#;
 
     const YAML_DOUBLE_ROOT_DIRS: &str = "
   - !directory
@@ -640,6 +671,21 @@ mod tests {
             assert!(metadata.len() == 0);
             Ok(())
         });
+    }
+
+    #[test]
+    fn create_test_dir_with_link_dependent_from_links_allowed_env_var() {
+        if env::var("LINKS_ALLOWED") == Ok("Y".to_string()) {
+            let tester_result = FsTester::new(YAML_DIR_WITH_LINK, ".");
+            assert!(tester_result.is_ok());
+        } else {
+            let tester_result = FsTester::new(YAML_DIR_WITH_LINK, ".");
+            if let Err(error) = tester_result {
+                assert!(error.is_not_allowed_settings());
+            } else {
+                panic!("should return error");
+            }
+        }
     }
 
     #[test]

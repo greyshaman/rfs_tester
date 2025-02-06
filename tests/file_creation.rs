@@ -6,15 +6,16 @@ const CONFIG: &str = r#"---
     - !directory
         name: test
         content:
-        - !link
+        - !file
             name: file_link.txt
-            target: LICENSE-MIT
+            content:
+                !original_file Cargo.toml
 "#;
 
 #[rfs_test(config = CONFIG, start_point = ".")]
 fn link_creation_test(dirname: &str) -> std::io::Result<()> {
-    let link_path = format!("{dirname}/file_link.txt");
-    let meta = fs::metadata(link_path)?;
+    let file_path = format!("{dirname}/file_link.txt");
+    let meta = fs::metadata(file_path)?;
     assert!(meta.is_file());
     Ok(())
 }
