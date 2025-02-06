@@ -45,6 +45,16 @@ impl FsTesterError {
         }
     }
 
+    pub fn not_allowed_settings() -> Self {
+        FsTesterError {
+            err: Box::new(ErrorImpl {
+                code: ErrorCode::LinksNotAllowed,
+                line: 0,
+                column: 0,
+            }),
+        }
+    }
+
     /// One-based line at which the error was detected.
     pub fn line(&self) -> usize {
         self.err.line
@@ -58,11 +68,13 @@ impl FsTesterError {
     /// Categorizes the cause of error.
     ///
     /// - `Category::ConfigFormat` - expected configuration format is not satisfied
+    /// - `Category::NotAllowedSettings` - used not activated configuration features
     /// - `Category::Syntax` - Json or Yaml parsers are encountered error when parsed config
     /// - `Category::Io` - failure to read or write data
     pub fn classify(&self) -> Category {
         match self.err.code {
             ErrorCode::EmptyConfig | ErrorCode::ShouldStartFromDirectory => Category::ConfigFormat,
+            ErrorCode::LinksNotAllowed => Category::NotAllowedSettings,
             ErrorCode::JsonSyntax(_) | ErrorCode::YamlSyntax(_) => Category::Syntax,
             ErrorCode::Io(_) => Category::Io,
         }
@@ -81,6 +93,11 @@ impl FsTesterError {
     /// Returns true if this error was caused in analyzing config format
     pub fn is_config_format(&self) -> bool {
         self.classify() == Category::ConfigFormat
+    }
+
+    /// Returns true if this error was caused of usage not activated restricted features
+    pub fn is_not_allowed_settings(&self) -> bool {
+        self.classify() == Category::NotAllowedSettings
     }
 
     pub fn io_error_kind(&self) -> Option<ErrorKind> {
@@ -111,6 +128,9 @@ pub enum Category {
     /// The error was caused by a failure configuration format.
     ConfigFormat,
 
+    /// Not allowed settings
+    NotAllowedSettings,
+
     /// The error was caused when configuration was parsed.
     Syntax,
 
@@ -126,6 +146,10 @@ pub(crate) enum ErrorCode {
 
     /// The configuration should start from the containing directory.
     ShouldStartFromDirectory,
+
+    /// If user not set LINKS_ALLOWED env variable and configuration
+    /// has links entries notify this error
+    LinksNotAllowed,
 
     /// Yaml parser encountered error.
     YamlSyntax(serde_yaml::Error),
@@ -154,6 +178,17 @@ impl Display for ErrorCode {
                 write!(
                     f,
                     "The configuration should start from the containing directory."
+                )
+            }
+            ErrorCode::LinksNotAllowed => {
+                write!(
+                    f,
+                    r#"
+                    The use of links has been disabled!
+                    !!! Be warned that the contents of linked files may be corrupted !!!
+                    If you want to enable the use of links, you can do so at your own risk
+                    by setting the LINKS_ALLOWED environment variable to "Y".
+                    "#
                 )
             }
             ErrorCode::Io(err) => write!(f, "IO error: {}", err),
@@ -211,11 +246,17 @@ impl From<FsTesterError> for IoError {
         } else {
             match error.classify() {
                 Category::Io => unreachable!(),
-                Category::Syntax | Category::ConfigFormat => {
+                Category::Syntax | Category::ConfigFormat | Category::NotAllowedSettings => {
                     IoError::new(ErrorKind::InvalidData, error)
                 }
             }
         }
+    }
+}
+
+impl From<IoError> for FsTesterError {
+    fn from(error: IoError) -> Self {
+        FsTesterError::io_error(error)
     }
 }
 
@@ -271,6 +312,15 @@ mod tests {
         assert_eq!(error.line(), 0);
         assert_eq!(error.column(), 0);
         assert_eq!(error.classify(), Category::ConfigFormat);
+    }
+
+    #[test]
+    fn test_not_allowed_settings_error() {
+        let error = FsTesterError::not_allowed_settings();
+        assert!(error.is_not_allowed_settings());
+        assert_eq!(error.line(), 0);
+        assert_eq!(error.column(), 0);
+        assert_eq!(error.classify(), Category::NotAllowedSettings);
     }
 
     #[test]
