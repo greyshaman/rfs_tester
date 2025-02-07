@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+      - dev
+    pull_request:
+      types: [opened, synchronize]
+
+jobs:
+  - name: Run tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - run: cargo install
+      - run: cargo test
+    if: always()
+
+    workflow:
+      if: |-
+        github.event.pull_request.merged == true
+        github.action == "pull_request" &&
+        github.event.action == "closed"
