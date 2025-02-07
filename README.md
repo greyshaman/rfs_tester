@@ -36,6 +36,16 @@ The random generator is used to add uniqueness to the temporary directory name, 
 
 The test directory structure can be configured using the YAML or JSON format.
 
+__WARNING!!!__ Use links with caution, as making changes to the content using a link may modify the original file.
+
+By default, links are disabled to prevent users from accidentally damaging files. In order to enable link support, users must set the "Y" value of the LINKS_ALLOWED environment variable prior to running link tests. If this variable has not been set and a link is found in the configuration for any test, users will be notified with an error message and brief instructions. This way, you can enable link support, but do so at your own risk.
+
+Example:
+
+```bash
+LINKS_ALLOWED=Y cargo test
+```
+
 ### Yaml configuration
 
 ```yaml
@@ -86,16 +96,6 @@ The same directory structure can be configured using JSON format:
 ### Directory configuration
 
 The directory structure can contain many nested directories. However, it is important to note that the first level of the configuration should begin with a single directory. This directory will serve as a sandbox container, with a name that includes a randomly generated number. Other inner components, such as directories, files, and links, should not change their original names and can continue to be used for testing purposes in the configuration.
-
-__WARNING!!!__ Use links with caution, as making changes to the content using a link may modify the original file.
-
-By default, links are disabled to prevent users from accidentally damaging files. In order to enable link support, users must set the "Y" value of the LINKS_ALLOWED environment variable prior to running link tests. If this variable has not been set and a link is found in the configuration for any test, users will be notified with an error message and brief instructions. This way, you can enable link support, but do so at your own risk.
-
-Example:
-
-```bash
-LINKS_ALLOWED=Y cargo test
-```
 
 Directory configuration can specify the name and content of:
 
