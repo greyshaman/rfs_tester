@@ -19,7 +19,7 @@ Add the dependency to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-rfs_tester = "0.4.3"
+rfs_tester = "0.4.4"
 ```
 
 ## Overview
