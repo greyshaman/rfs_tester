@@ -19,14 +19,14 @@ Add the dependency to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-rfs_tester = "0.4.4"
+rfs_tester = "1.0.0"
 ```
 
 ## Overview
 
 This library provides a simple utility for testing file system operations.
 When you are testing something, you need a sandbox that can be wiped out after the testing is finished.
-This package allows you to configure a temporary directory and its internal structure, perform tests, and remove it when all the work is done.
+This package allows you to configure a temporary directory and its internal structure, perform tests, and remove it when all the work is done. To speed up the process of creating a temporary directory, the contents are loaded asynchronously.
 
 It can be configured to generate a customized directory structure. The main idea behind this package is to write test cases for a program that needs to work with the file system, manipulating directories, files, and links to them. The tests require a template directory with several files at various levels of the file system structure.
 
@@ -208,7 +208,7 @@ Add dependency in Cargo.toml to use it:
 
 ```toml
 [dependencies]
-rfs_test_macro = "1.1.0"
+rfs_test_macro = "1.1.1"
 ```
 
 ### Using JSON Configuration
