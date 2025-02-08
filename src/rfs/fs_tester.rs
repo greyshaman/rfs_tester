@@ -1,8 +1,13 @@
+use futures::future::BoxFuture;
+use futures::FutureExt;
 use rand::Rng;
-use std::fs::{self, hard_link, DirBuilder, File};
-use std::io::{self, Read, Write};
-use std::path::Path;
-use std::{env, result as std_result};
+use std::env;
+use std::{
+    io::{self},
+    path::{Path, PathBuf},
+};
+use tokio::fs::{self, hard_link, File};
+use tokio::io::AsyncWriteExt;
 
 use crate::rfs::fs_tester_error::{FsTesterError, Result};
 
@@ -61,87 +66,117 @@ impl FsTester {
         rand::rng().random::<u64>()
     }
 
-    fn create_dir(dirname: &str) -> std_result::Result<(), FsTesterError> {
-        let dir_builder = DirBuilder::new();
-        dir_builder.create(dirname)?;
+    async fn create_dir(dirname: &PathBuf) -> Result<()> {
+        fs::create_dir_all(dirname)
+            .await
+            .map_err(FsTesterError::from)?;
 
         Ok(())
     }
 
-    fn create_file(conf: &FileConf, dir_path: &str) -> std_result::Result<String, FsTesterError> {
-        let mut buffer: Vec<u8> = Vec::new();
-        let file_name: String = format!("{}/{}", dir_path, conf.name);
-        let content: &[u8] = match &conf.content {
-            FileContent::InlineBytes(data) => data,
-            FileContent::InlineText(text) => text.as_bytes(),
-            FileContent::OriginalFile(file_path) => {
-                let mut original_file = File::open(file_path)?;
-                original_file.read_to_end(&mut buffer)?;
-                &buffer
-            }
-            FileContent::Empty => &[],
-        };
-        let mut file = File::create(&file_name)?;
-        file.write_all(content)?;
+    async fn create_file(conf: &FileConf, dir_path: &PathBuf) -> Result<String> {
+        let dst_file_name = dir_path.join(&conf.name);
+        let mut dst_file = File::create(&dst_file_name)
+            .await
+            .map_err(FsTesterError::from)?;
 
-        Ok(String::from(file_name))
+        match &conf.content {
+            FileContent::InlineBytes(data) => {
+                dst_file
+                    .write_all(data)
+                    .await
+                    .map_err(FsTesterError::from)?;
+            }
+            FileContent::InlineText(text) => {
+                dst_file
+                    .write_all(text.as_bytes())
+                    .await
+                    .map_err(FsTesterError::from)?;
+            }
+            FileContent::OriginalFile(file_path) => {
+                let mut src_file = File::open(file_path).await.map_err(FsTesterError::from)?;
+                tokio::io::copy(&mut src_file, &mut dst_file)
+                    .await
+                    .map_err(FsTesterError::from)?;
+            }
+            FileContent::Empty => {}
+        }
+
+        Ok(dst_file_name.to_string_lossy().into_owned())
     }
 
     /// WARNING!!! Use links with caution, as making changes to the content using a link may modify the original file.
-    fn create_link(
+    async fn create_link(
         conf: &LinkConf,
-        dir_path: &str,
+        dir_path: &PathBuf,
         permissions: &Permissions,
-    ) -> std_result::Result<String, FsTesterError> {
-        let link_name = format!("{}/{}", &dir_path, conf.name);
-        let target_name = conf.target.clone();
+    ) -> Result<String> {
+        let link_name = dir_path.join(&conf.name);
+        let target_name = PathBuf::from(&conf.target);
         if permissions.links_allowed {
-            hard_link(target_name, link_name.clone())?;
+            hard_link(target_name, &link_name)
+                .await
+                .map_err(FsTesterError::from)?;
 
-            Ok(String::from(link_name))
+            Ok(link_name.to_string_lossy().into_owned())
         } else {
             Err(FsTesterError::not_allowed_settings())
         }
     }
 
-    fn delete_test_set(dirname: &str) -> std_result::Result<(), io::Error> {
-        fs::remove_dir_all(dirname)?;
-        Ok(())
-    }
-
-    fn build_directory(
+    async fn build_directory_with_content(
         directory_conf: &DirectoryConf,
-        parent_path: &str,
+        parent_path: &PathBuf,
         level: i32,
         permissions: &Permissions,
-    ) -> std_result::Result<String, FsTesterError> {
+    ) -> Result<String> {
         let dir_path = if level == 0 {
             let uniq_code = Self::get_random_code();
-            format!("{}/{}_{}", parent_path, directory_conf.name, uniq_code)
+            parent_path.join(format!("{}_{}", directory_conf.name, uniq_code))
         } else {
-            format!("{}/{}", parent_path, directory_conf.name)
+            parent_path.join(&directory_conf.name)
         };
-        Self::create_dir(&dir_path)?;
 
-        for entry in directory_conf.content.iter() {
+        Self::create_dir(&dir_path).await?;
+
+        for entry in &directory_conf.content {
             let result = match entry {
                 ConfigEntry::Directory(conf) => {
-                    Self::build_directory(conf, &dir_path, level + 1, permissions)
+                    Self::build_directory_with_content_boxed(
+                        conf,
+                        &dir_path,
+                        level + 1,
+                        permissions,
+                    )
+                    .await
                 }
-                ConfigEntry::File(conf) => Self::create_file(conf, &dir_path),
-                ConfigEntry::Link(conf) => Self::create_link(conf, &dir_path, permissions),
+                ConfigEntry::File(conf) => Self::create_file(conf, &dir_path).await,
+                ConfigEntry::Link(conf) => Self::create_link(conf, &dir_path, permissions).await,
             };
 
             if let Err(error) = result {
-                if level == 0 && fs::metadata(dir_path.clone())?.is_dir() {
+                if level == 0 && fs::metadata(&dir_path).await?.is_dir() {
                     // Delete a temporary directory if an error occurred while filling it in.
-                    fs::remove_dir_all(dir_path)?;
+                    fs::remove_dir_all(&dir_path).await?;
                 }
                 return Err(error);
             }
         }
 
-        Ok(dir_path)
+        Ok(dir_path.to_string_lossy().into_owned())
+    }
+
+    fn build_directory_with_content_boxed<'a>(
+        directory_conf: &'a DirectoryConf,
+        parent_path: &'a PathBuf,
+        level: i32,
+        permissions: &'a Permissions,
+    ) -> BoxFuture<'a, Result<String>> {
+        async move {
+            Self::build_directory_with_content(directory_conf, parent_path, level, permissions)
+                .await
+        }
+        .boxed()
     }
 
     /// The configuration parser
@@ -234,10 +269,10 @@ impl FsTester {
         let config: Configuration = Self::parse_config(config_str)?;
 
         let base_dir = if start_point.len() == 0 {
-            String::from(".")
+            PathBuf::from(".")
         } else {
             if Path::new(start_point).is_dir() {
-                String::from(start_point)
+                PathBuf::from(start_point)
             } else {
                 return Err(FsTesterError::should_start_from_directory());
             }
@@ -250,15 +285,21 @@ impl FsTester {
         let zero_level_config_ref: Option<&ConfigEntry> = config.0.iter().next();
         let directory_conf = match zero_level_config_ref {
             Some(entry) => match entry {
-                ConfigEntry::File(_) | ConfigEntry::Link(_) => {
+                ConfigEntry::Directory(conf) => conf,
+                _ => {
                     return Err(FsTesterError::should_start_from_directory());
                 }
-                ConfigEntry::Directory(conf) => conf,
             },
             None => return Err(FsTesterError::empty_config()),
         };
 
-        let base_dir = Self::build_directory(&directory_conf, &base_dir, 0, &permissions)?;
+        let runtime = tokio::runtime::Runtime::new().map_err(FsTesterError::from)?;
+        let base_dir = runtime.block_on(Self::build_directory_with_content(
+            directory_conf,
+            &PathBuf::from(&base_dir),
+            0,
+            &permissions,
+        ))?;
 
         Ok(FsTester { config, base_dir })
     }
@@ -311,8 +352,8 @@ impl FsTester {
 
 impl Drop for FsTester {
     fn drop(&mut self) {
-        if let Err(_) = Self::delete_test_set(&self.base_dir) {
-            // TODO: handle delete directory but cannot figure out how and what to do right now. Sorry.
+        if let Err(e) = std::fs::remove_dir_all(&self.base_dir) {
+            eprintln!("Failed to delete directory: {}", e);
         }
     }
 }
@@ -721,5 +762,56 @@ mod tests {
         let config = serde_json::to_string(&test_conf).unwrap();
         assert!(config.contains("test.txt"));
         assert!(config.contains("Cargo.toml"));
+    }
+
+    #[test]
+    fn many_files_test() -> Result<()> {
+        let conf = r#"
+        - !directory
+            name: base_dir
+            content:
+                - !file
+                    name: test_from_cargo.toml
+                    content:
+                        !original_file Cargo.toml
+                - !directory
+                    name: dir_1_1
+                    content:
+                        - !file
+                            name: text_test.txt
+                            content:
+                                !inline_text "test"
+                        - !file
+                            name: empty_file.txt
+                            content: !empty
+                        - !directory
+                            name: dir_2_1
+                            content:
+                                - !file
+                                    name: empty_file.txt
+                                    content: !empty
+                - !directory
+                    name: dir_1_2
+                    content:
+                        - !file
+                            name: test_from_cargo_2.toml
+                            content:
+                                !original_file Cargo.toml
+        "#;
+        let tester = FsTester::new(conf, ".")?;
+        tester.perform_fs_test(|dirname| {
+            let inner_file_name = PathBuf::from(dirname).join("test_from_cargo.toml");
+            let metadata = std::fs::metadata(inner_file_name)?;
+
+            assert!(metadata.len() > 0);
+
+            let dir_1_1 = std::fs::metadata(PathBuf::from(dirname).join("dir_1_1"))?;
+            assert!(dir_1_1.is_dir());
+
+            let dir_1_2 = std::fs::metadata(PathBuf::from(dirname).join("dir_1_2"))?;
+            assert!(dir_1_2.is_dir());
+            Ok(())
+        });
+        Ok(())
     }
 }
