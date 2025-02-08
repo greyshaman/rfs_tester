@@ -7,39 +7,51 @@ pub enum FileContent {
     /// InlineBytes - by byte vector:
     ///
     /// ```yaml
-    /// - file:
-    ///     name: test.txt
-    ///     content
-    ///       inline_bytes:
-    ///         - 116
-    ///         - 101
-    ///         - 115
-    ///         - 116
+    /// - !directory
+    ///     name: base_container
+    ///     content:
+    ///         - !file
+    ///             name: test.txt
+    ///             content:
+    ///                 !inline_bytes
+    ///                     - 116
+    ///                     - 101
+    ///                     - 115
+    ///                     - 116
     /// ```
     InlineBytes(Vec<u8>),
     /// InlineText - by usual string of text:
     ///
     /// ```yaml
-    /// - file:
-    ///     name: test.txt
-    ///     content
-    ///       inline_text: test
+    /// - !directory
+    ///     name: base_container
+    ///     content:
+    ///         - !file
+    ///             name: test.txt
+    ///             content:
+    ///                 !inline_text test
     /// ```
     InlineText(String),
     /// OriginalFile - Retrieve from a real file using its path:
     ///
     /// ```yaml
-    /// - file:
-    ///     name: test.txt
+    /// - !directory
+    ///     name: base_container
     ///     content:
-    ///       original_file: "test.txt"
+    ///         - file
+    ///             name: test.txt
+    ///             content:
+    ///                 !original_file "test.txt"
     /// ```
     OriginalFile(String),
     /// or simply Empty
     ///
     /// ```yaml
-    /// - file:
-    ///     name: test.txt
-    ///     content: empty
+    /// - !directory
+    ///     name: base_container
+    ///     content:
+    ///         - !file
+    ///             name: test.txt
+    ///             content: !empty
     Empty,
 }

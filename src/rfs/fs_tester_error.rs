@@ -12,47 +12,38 @@ pub struct FsTesterError {
 /// Customized result type to handle config parse error
 pub type Result<T> = std_result::Result<T, FsTesterError>;
 
+macro_rules! fs_tester_error {
+    ($code:expr, $line:expr, $column:expr) => {
+        FsTesterError {
+            err: Box::new(ErrorImpl {
+                code: $code,
+                line: $line,
+                column: $column,
+            }),
+        }
+    };
+    ($code:expr) => {
+        fs_tester_error!($code, 0, 0)
+    };
+}
+
 impl FsTesterError {
     /// Construct error instance in empty configuration case
     pub fn empty_config() -> Self {
-        FsTesterError {
-            err: Box::new(ErrorImpl {
-                code: ErrorCode::EmptyConfig,
-                line: 0,
-                column: 0,
-            }),
-        }
+        fs_tester_error!(ErrorCode::EmptyConfig)
     }
 
     /// Construct error instance in case when configuration does not have root directory
     pub fn should_start_from_directory() -> Self {
-        FsTesterError {
-            err: Box::new(ErrorImpl {
-                code: ErrorCode::ShouldStartFromDirectory,
-                line: 0,
-                column: 0,
-            }),
-        }
-    }
-
-    pub fn io_error(err: std::io::Error) -> Self {
-        FsTesterError {
-            err: Box::new(ErrorImpl {
-                code: ErrorCode::Io(err),
-                line: 0,
-                column: 0,
-            }),
-        }
+        fs_tester_error!(ErrorCode::ShouldStartFromDirectory)
     }
 
     pub fn not_allowed_settings() -> Self {
-        FsTesterError {
-            err: Box::new(ErrorImpl {
-                code: ErrorCode::LinksNotAllowed,
-                line: 0,
-                column: 0,
-            }),
-        }
+        fs_tester_error!(ErrorCode::LinksNotAllowed)
+    }
+
+    pub fn io_error(err: std::io::Error) -> Self {
+        fs_tester_error!(ErrorCode::Io(err))
     }
 
     /// One-based line at which the error was detected.
@@ -109,17 +100,11 @@ impl FsTesterError {
     }
 
     pub fn is_empty_config(&self) -> bool {
-        match self.err.code {
-            ErrorCode::EmptyConfig => true,
-            _ => false,
-        }
+        matches!(self.err.code, ErrorCode::EmptyConfig)
     }
 
     pub fn is_should_start_from_directory(&self) -> bool {
-        match self.err.code {
-            ErrorCode::ShouldStartFromDirectory => true,
-            _ => false,
-        }
+        matches!(self.err.code, ErrorCode::ShouldStartFromDirectory)
     }
 }
 
@@ -222,8 +207,8 @@ impl Debug for FsTesterError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Error({:?}, line: {}, column: {}",
-            self.err.code, self.err.line, self.err.column,
+            "FsTesterError {{{:?}, line: {}, column: {}, message: {} }}",
+            self.err.code, self.err.line, self.err.column, self
         )
     }
 }
@@ -261,43 +246,23 @@ impl From<IoError> for FsTesterError {
 }
 
 impl From<serde_json::Error> for FsTesterError {
-    /// from implementation for wrapped Error structs
     fn from(err: serde_json::Error) -> FsTesterError {
-        use serde_json::error::Category as JsonCategory;
-
         let line = err.line();
         let column = err.column();
-        match err.classify() {
-            JsonCategory::Io => FsTesterError {
-                err: Box::new(ErrorImpl {
-                    code: ErrorCode::Io(err.into()),
-                    line,
-                    column,
-                }),
-            },
-            JsonCategory::Syntax | JsonCategory::Data | JsonCategory::Eof => FsTesterError {
-                err: Box::new(ErrorImpl {
-                    code: ErrorCode::JsonSyntax(err.into()),
-                    line,
-                    column,
-                }),
-            },
-        }
+        let code = match err.classify() {
+            serde_json::error::Category::Io => ErrorCode::Io(err.into()),
+            _ => ErrorCode::JsonSyntax(err),
+        };
+        fs_tester_error!(code, line, column)
     }
 }
 
 impl From<serde_yaml::Error> for FsTesterError {
     fn from(err: serde_yaml::Error) -> Self {
-        let line = err.location().map(|loc| loc.line()).unwrap_or(0);
-        let column = err.location().map(|loc| loc.column()).unwrap_or(0);
-
-        FsTesterError {
-            err: Box::new(ErrorImpl {
-                code: ErrorCode::YamlSyntax(err),
-                line,
-                column,
-            }),
-        }
+        let location = err.location();
+        let line = location.as_ref().map(|loc| loc.line()).unwrap_or(0);
+        let column = location.as_ref().map(|loc| loc.column()).unwrap_or(0);
+        fs_tester_error!(ErrorCode::YamlSyntax(err), line, column)
     }
 }
 
@@ -378,14 +343,14 @@ mod tests {
 
     #[test]
     fn test_yaml_syntax_error() {
-        // Пытаемся парсить невалидный YAML
+        // Attempt to parsing the invalid YAML
         let invalid_yaml = "invalid: yaml: [";
         let yaml_error = serde_yaml::from_str::<serde_yaml::Value>(invalid_yaml).unwrap_err();
 
-        // Конвертируем ошибку в FsTesterError
+        // Convert error into FsTesterError
         let error = FsTesterError::from(yaml_error);
 
-        // Проверяем, что ошибка корректно классифицируется
+        // Verify then error classifying correctly
         assert!(error.is_syntax());
         assert_eq!(error.classify(), Category::Syntax);
     }
