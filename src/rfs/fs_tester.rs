@@ -78,7 +78,8 @@ impl FsTester {
     }
 
     fn is_current_path(path: &str) -> bool {
-        let current_canonical_path = std::fs::canonicalize(".").expect("Current path always available");
+        let current_canonical_path =
+            std::fs::canonicalize(".").expect("Current path always available");
         let specified_canonical_path = std::fs::canonicalize(path);
         if let Ok(specified_canonical_path) = specified_canonical_path {
             specified_canonical_path == current_canonical_path
@@ -380,7 +381,9 @@ impl FsTester {
         if let Err(error) = result {
             if let Some(dst_dir_path) = error.sandbox_dir() {
                 // Protecting the current path from accidental removal
-                if std::fs::metadata(&dst_dir_path)?.is_dir() && !Self::is_current_path(&dst_dir_path) {
+                if std::fs::metadata(&dst_dir_path)?.is_dir()
+                    && !Self::is_current_path(&dst_dir_path)
+                {
                     // Delete a temporary directory if an error occured while filling it in.
                     std::fs::remove_dir_all(&dst_dir_path)?;
                 }
