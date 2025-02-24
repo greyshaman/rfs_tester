@@ -7,6 +7,7 @@ pub mod directory_conf;
 pub mod file_conf;
 pub mod link_conf;
 pub mod clone_directory_conf;
+pub mod file_content;
 
 pub use config_entry::ConfigEntry;
 pub use configuration::Configuration;
