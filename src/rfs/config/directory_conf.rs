@@ -9,13 +9,13 @@ use super::config_entry::ConfigEntry;
 ///
 /// ```yaml
 /// ---
-///   - directory:
+///   - !directory
 ///       name: test
 ///       content:
-///         - file:
+///         - !file
 ///             name: test.txt
 ///             content: empty
-///         - link:
+///         - !link
 ///             name: test_link
 ///             target: test.txt
 /// ```
@@ -24,22 +24,26 @@ use super::config_entry::ConfigEntry;
 ///
 /// ```json
 /// {
-///   "name": "test_dir",
-///   "content": [
-///     "file": {
-///       "name": "test.txt",
-///       "content": "empty"
-///     },
-///     "link": {
-///       "name": "test_link",
-///       "target": "test.txt"
-///     }
-///   ]
+///     [
+///         "directory": {
+///             "name": "test_dir",
+///             "content": [
+///                 "file": {
+///                     "name": "test.txt",
+///                     "content": "empty"
+///                 },
+///                 "link": {
+///                     "name": "test_link",
+///                     "target": "test.txt"
+///                 }
+///             ]
+///         }
+///     ]
 /// }
 /// ```
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct DirectoryConf {
-    /// Directory name.
+    /// A directory will be created with the given name.
     pub name: String,
 
     /// The directory content can contain a list of various entries.
