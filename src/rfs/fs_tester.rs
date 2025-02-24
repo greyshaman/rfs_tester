@@ -8,14 +8,16 @@ use std::{
 };
 use tokio::fs::{self, hard_link, File};
 use tokio::io::AsyncWriteExt;
+use walkdir::WalkDir;
 
 use crate::rfs::fs_tester_error::{FsTesterError, Result};
 
+use super::config::clone_directory_conf::CloneDirectoryConf;
 use super::config::config_entry::ConfigEntry;
 use super::config::configuration::Configuration;
 use super::config::directory_conf::DirectoryConf;
+use super::config::file_content::FileContent;
 use super::config::{FileConf, LinkConf};
-use super::file_content::FileContent;
 
 const LINKS_ALLOWED_VAR_NAME: &str = "LINKS_ALLOWED";
 
@@ -66,38 +68,66 @@ impl FsTester {
         rand::rng().random::<u64>()
     }
 
-    async fn create_dir(dirname: &PathBuf) -> Result<()> {
-        fs::create_dir_all(dirname)
-            .await
-            .map_err(FsTesterError::from)?;
+    fn gen_dir_path(dir_path: &PathBuf, name: &str, level: u32) -> PathBuf {
+        if level == 0 {
+            let uniq_code = Self::get_random_code();
+            dir_path.join(format!("{}_{}", name, uniq_code))
+        } else {
+            dir_path.join(name)
+        }
+    }
 
-        Ok(())
+    async fn create_dir(dirname: &PathBuf) -> Result<String> {
+        fs::create_dir_all(dirname).await?;
+
+        Ok(dirname.to_string_lossy().into_owned())
+    }
+
+    async fn copy_dir(
+        src_path: &PathBuf,
+        dst_path: &PathBuf,
+        permissions: &Permissions,
+    ) -> Result<String> {
+        let dst_dir_name = Self::create_dir(dst_path).await?;
+        // Reading source dir
+        let src_dir_entries_iter = WalkDir::new(src_path).into_iter();
+        for entry in src_dir_entries_iter {
+            let entry = entry?;
+            let entry_metadata = entry.clone().metadata()?;
+            let src_entry_path = entry.path();
+            let filename = src_entry_path
+                .into_iter()
+                .last()
+                .expect("source dir should not be empty");
+            let dst_entry_path = dst_path.join(filename);
+            if entry_metadata.is_file() {
+                // copy file
+                let mut src_file = File::open(src_entry_path).await?;
+                let mut dst_file = File::create(dst_entry_path).await?;
+                tokio::io::copy(&mut src_file, &mut dst_file).await?;
+            } else if entry_metadata.is_dir() {
+                // start recursion for child dir
+                let src_entry_path = PathBuf::from(src_entry_path);
+                Self::copy_dir_boxed(&src_entry_path, &dst_entry_path, permissions).await?;
+            }
+        }
+        Ok(dst_dir_name)
     }
 
     async fn create_file(conf: &FileConf, dir_path: &PathBuf) -> Result<String> {
         let dst_file_name = dir_path.join(&conf.name);
-        let mut dst_file = File::create(&dst_file_name)
-            .await
-            .map_err(FsTesterError::from)?;
+        let mut dst_file = File::create(&dst_file_name).await?;
 
         match &conf.content {
             FileContent::InlineBytes(data) => {
-                dst_file
-                    .write_all(data)
-                    .await
-                    .map_err(FsTesterError::from)?;
+                dst_file.write_all(&data).await?;
             }
             FileContent::InlineText(text) => {
-                dst_file
-                    .write_all(text.as_bytes())
-                    .await
-                    .map_err(FsTesterError::from)?;
+                dst_file.write_all(text.as_bytes()).await?;
             }
             FileContent::OriginalFile(file_path) => {
-                let mut src_file = File::open(file_path).await.map_err(FsTesterError::from)?;
-                tokio::io::copy(&mut src_file, &mut dst_file)
-                    .await
-                    .map_err(FsTesterError::from)?;
+                let mut src_file = File::open(file_path).await?;
+                tokio::io::copy(&mut src_file, &mut dst_file).await?;
             }
             FileContent::Empty => {}
         }
@@ -114,9 +144,7 @@ impl FsTester {
         let link_name = dir_path.join(&conf.name);
         let target_name = PathBuf::from(&conf.target);
         if permissions.links_allowed {
-            hard_link(target_name, &link_name)
-                .await
-                .map_err(FsTesterError::from)?;
+            hard_link(target_name, &link_name).await?;
 
             Ok(link_name.to_string_lossy().into_owned())
         } else {
@@ -124,59 +152,84 @@ impl FsTester {
         }
     }
 
+    async fn clone_directory(
+        conf: &CloneDirectoryConf,
+        parent_path: &PathBuf,
+        level: u32,
+        permissions: &Permissions,
+    ) -> Result<String> {
+        let dst_dir_path = Self::gen_dir_path(parent_path, &conf.name, level);
+        let src_dir_path = parent_path.join(&conf.source);
+
+        Self::copy_dir(&src_dir_path, &dst_dir_path, permissions)
+            .await
+            .map_err(|mut err| {
+                if level == 0 {
+                    err.set_sandbox_dir(Some(dst_dir_path.to_string_lossy().into_owned()));
+                }
+                err
+            })?;
+
+        Ok(dst_dir_path.to_string_lossy().into_owned())
+    }
+
     async fn build_directory_with_content(
         directory_conf: &DirectoryConf,
         parent_path: &PathBuf,
-        level: i32,
+        level: u32,
         permissions: &Permissions,
     ) -> Result<String> {
-        let dir_path = if level == 0 {
-            let uniq_code = Self::get_random_code();
-            parent_path.join(format!("{}_{}", directory_conf.name, uniq_code))
-        } else {
-            parent_path.join(&directory_conf.name)
-        };
+        let dst_dir_path = Self::gen_dir_path(parent_path, &directory_conf.name, level);
 
-        Self::create_dir(&dir_path).await?;
+        Self::create_dir(&dst_dir_path).await?;
 
         for entry in &directory_conf.content {
-            let result = match entry {
-                ConfigEntry::Directory(conf) => {
-                    Self::build_directory_with_content_boxed(
-                        conf,
-                        &dir_path,
-                        level + 1,
-                        permissions,
-                    )
-                    .await
+            match entry {
+                ConfigEntry::Directory(conf) => Self::build_directory_with_content_boxed(
+                    conf,
+                    &dst_dir_path,
+                    level + 1,
+                    permissions,
+                )
+                .await
+                .map_err(|mut err| {
+                    if level == 0 {
+                        err.set_sandbox_dir(Some(String::from(dst_dir_path.to_string_lossy())));
+                    }
+                    err
+                })?,
+                ConfigEntry::CloneDirectory(conf) => {
+                    Self::clone_directory(conf, &dst_dir_path, level, permissions).await?
                 }
-                ConfigEntry::File(conf) => Self::create_file(conf, &dir_path).await,
-                ConfigEntry::Link(conf) => Self::create_link(conf, &dir_path, permissions).await,
+                ConfigEntry::File(conf) => Self::create_file(conf, &dst_dir_path).await?,
+                ConfigEntry::Link(conf) => {
+                    Self::create_link(conf, &dst_dir_path, permissions).await?
+                }
             };
-
-            if let Err(error) = result {
-                if level == 0 && fs::metadata(&dir_path).await?.is_dir() {
-                    // Delete a temporary directory if an error occurred while filling it in.
-                    fs::remove_dir_all(&dir_path).await?;
-                }
-                return Err(error);
-            }
         }
 
-        Ok(dir_path.to_string_lossy().into_owned())
+        Ok(dst_dir_path.to_string_lossy().into_owned())
     }
 
     fn build_directory_with_content_boxed<'a>(
-        directory_conf: &'a DirectoryConf,
+        conf: &'a DirectoryConf,
         parent_path: &'a PathBuf,
-        level: i32,
+        level: u32,
         permissions: &'a Permissions,
     ) -> BoxFuture<'a, Result<String>> {
         async move {
-            Self::build_directory_with_content(directory_conf, parent_path, level, permissions)
+            Self::build_directory_with_content(conf, parent_path, level, permissions)
                 .await
         }
         .boxed()
+    }
+
+    fn copy_dir_boxed<'a>(
+        src_dir: &'a PathBuf,
+        dst_path: &'a PathBuf,
+        permissions: &'a Permissions,
+    ) -> BoxFuture<'a, Result<String>> {
+        async move { Self::copy_dir(src_dir, dst_path, permissions).await }.boxed()
     }
 
     /// The configuration parser
@@ -268,7 +321,9 @@ impl FsTester {
 
         let config: Configuration = Self::parse_config(config_str)?;
 
+        // The directory where the temporary test sandbox will be created.
         let base_dir = if start_point.len() == 0 {
+            // If the starting point is not provided as an argument, we will use the current location.
             PathBuf::from(".")
         } else {
             if Path::new(start_point).is_dir() {
@@ -278,30 +333,54 @@ impl FsTester {
             }
         };
 
-        // Checks if the configuration starts from a single directory.
+        // Checks if the configuration starts from a single config entry (Directory or CloneDirectory).
         if config.0.len() != 1 {
             return Err(FsTesterError::should_start_from_directory());
         }
-        let zero_level_config_ref: Option<&ConfigEntry> = config.0.iter().next();
-        let directory_conf = match zero_level_config_ref {
-            Some(entry) => match entry {
-                ConfigEntry::Directory(conf) => conf,
-                _ => {
-                    return Err(FsTesterError::should_start_from_directory());
-                }
-            },
-            None => return Err(FsTesterError::empty_config()),
+        // After previous check we can take ConfigEntry
+        let root_config_entry = config
+            .0
+            .iter()
+            .next()
+            .expect("zero level of configuration should have only one entry");
+        // And do verification if the configuration entry is Directory or CloneDirectory
+        let result = match root_config_entry {
+            ConfigEntry::Directory(conf) => {
+                let runtime = tokio::runtime::Runtime::new()?;
+                runtime.block_on(Self::build_directory_with_content(
+                    &conf,
+                    &PathBuf::from(&base_dir),
+                    0,
+                    &permissions,
+                ))
+            }
+            ConfigEntry::CloneDirectory(conf) => {
+                let runtime = tokio::runtime::Runtime::new()?;
+                runtime.block_on(Self::clone_directory(
+                    &conf,
+                    &PathBuf::from(&base_dir),
+                    0,
+                    &permissions,
+                ))
+            }
+            _ => return Err(FsTesterError::should_start_from_directory()),
+            // None => return Err(FsTesterError::empty_config()),
         };
 
-        let runtime = tokio::runtime::Runtime::new().map_err(FsTesterError::from)?;
-        let base_dir = runtime.block_on(Self::build_directory_with_content(
-            directory_conf,
-            &PathBuf::from(&base_dir),
-            0,
-            &permissions,
-        ))?;
+        if let Err(error) = result {
+            if let Some(dst_dir_path) = error.sandbox_dir() {
+                if std::fs::metadata(&dst_dir_path)?.is_dir() {
+                    // Delete a temporary directory if an error occured while filling it in.
+                    std::fs::remove_dir_all(&dst_dir_path)?;
+                }
+            }
+            return Err(error);
+        }
 
-        Ok(FsTester { config, base_dir })
+        Ok(FsTester {
+            config,
+            base_dir: String::from(base_dir.to_string_lossy()),
+        })
     }
 
     /// The test_proc function starts. The test unit is defined as a closure parameter
@@ -620,8 +699,7 @@ mod tests {
 
     #[test]
     fn parser_should_accept_json_config_with_directory_and_file() {
-        let simple_conf_str =
-      "[{\"directory\":{\"name\":\"test\",\"content\":[{\"file\":{\"name\":\"test.txt\",\"content\":{\"inline_bytes\":[116,101,115,116]}}}]}}]";
+        let simple_conf_str = "[{\"directory\":{\"name\":\"test\",\"content\":[{\"file\":{\"name\":\"test.txt\",\"content\":{\"inline_bytes\":[116,101,115,116]}}}]}}]";
         let test_conf = Configuration(vec![ConfigEntry::Directory(DirectoryConf {
             name: String::from("test"),
             content: vec![ConfigEntry::File(FileConf {
