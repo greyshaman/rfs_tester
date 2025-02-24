@@ -77,12 +77,18 @@ impl FsTester {
         }
     }
 
-    fn is_current_path(path: &str) -> bool {
-        let current_canonical_path =
-            std::fs::canonicalize(".").expect("Current path always available");
-        let specified_canonical_path = std::fs::canonicalize(path);
-        if let Ok(specified_canonical_path) = specified_canonical_path {
-            specified_canonical_path == current_canonical_path
+    fn cmp_canonical_paths(left: &str, right: &str) -> bool {
+        if left == right {
+            return true;
+        }
+
+        if let Ok(left_canonical_path) = std::fs::canonicalize(left) {
+            let right_canonical_path = std::fs::canonicalize(right);
+            if let Ok(right_canonical_path) = right_canonical_path {
+                left_canonical_path == right_canonical_path
+            } else {
+                false
+            }
         } else {
             false
         }
@@ -382,7 +388,8 @@ impl FsTester {
             if let Some(dst_dir_path) = error.sandbox_dir() {
                 // Protecting the current path from accidental removal
                 if std::fs::metadata(&dst_dir_path)?.is_dir()
-                    && !Self::is_current_path(&dst_dir_path)
+                    && !Self::cmp_canonical_paths("/", &dst_dir_path)
+                    && !Self::cmp_canonical_paths(".", &dst_dir_path)
                 {
                     // Delete a temporary directory if an error occured while filling it in.
                     std::fs::remove_dir_all(&dst_dir_path)?;
@@ -449,7 +456,9 @@ impl Drop for FsTester {
         let sandbox_dir = &self.base_dir;
 
         // Protecting the current path from accidental removal
-        if !Self::is_current_path(sandbox_dir) {
+        if !Self::cmp_canonical_paths("/", sandbox_dir)
+            && !Self::cmp_canonical_paths(".", sandbox_dir)
+        {
             if let Err(e) = std::fs::remove_dir_all(&self.base_dir) {
                 eprintln!("Failed to delete directory: {}", e);
             }
