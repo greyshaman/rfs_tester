@@ -77,6 +77,16 @@ impl FsTester {
         }
     }
 
+    fn is_current_path(path: &str) -> bool {
+        let current_canonical_path = std::fs::canonicalize(".").expect("Current path always available");
+        let specified_canonical_path = std::fs::canonicalize(path);
+        if let Ok(specified_canonical_path) = specified_canonical_path {
+            specified_canonical_path == current_canonical_path
+        } else {
+            false
+        }
+    }
+
     async fn create_dir(dirname: &PathBuf) -> Result<String> {
         fs::create_dir_all(dirname).await?;
 
@@ -369,7 +379,8 @@ impl FsTester {
 
         if let Err(error) = result {
             if let Some(dst_dir_path) = error.sandbox_dir() {
-                if std::fs::metadata(&dst_dir_path)?.is_dir() {
+                // Protecting the current path from accidental removal
+                if std::fs::metadata(&dst_dir_path)?.is_dir() && !Self::is_current_path(&dst_dir_path) {
                     // Delete a temporary directory if an error occured while filling it in.
                     std::fs::remove_dir_all(&dst_dir_path)?;
                 }
@@ -379,7 +390,7 @@ impl FsTester {
 
         Ok(FsTester {
             config,
-            base_dir: String::from(base_dir.to_string_lossy()),
+            base_dir: result.expect("This branch should have sandbox_dir value"),
         })
     }
 
@@ -431,8 +442,16 @@ impl FsTester {
 
 impl Drop for FsTester {
     fn drop(&mut self) {
-        if let Err(e) = std::fs::remove_dir_all(&self.base_dir) {
-            eprintln!("Failed to delete directory: {}", e);
+        println!("attempt to remove {} directory", &self.base_dir);
+        let sandbox_dir = &self.base_dir;
+
+        // Protecting the current path from accidental removal
+        if !Self::is_current_path(sandbox_dir) {
+            if let Err(e) = std::fs::remove_dir_all(&self.base_dir) {
+                eprintln!("Failed to delete directory: {}", e);
+            }
+        } else {
+            eprintln!("Accidental deletion of the current directory is prevented due to incorrect configuration.");
         }
     }
 }
