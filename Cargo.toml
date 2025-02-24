@@ -21,7 +21,8 @@ After the tests are finished, the temporary directory will be deleted automatica
 rfs_test_macro = "1.1.1"
 rand = "0.9.0"
 serde = { version = "1.0.218", features = ["derive"] }
-serde_json = "1.0.139"
+serde_json = "1.0.137"
 serde_yaml = "0.9.34"
 tokio = { version = "1.43.0", features = ["full"] }
 futures = "0.3.31"
+walkdir = "2.5.0"
