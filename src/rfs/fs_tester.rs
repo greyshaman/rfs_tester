@@ -39,7 +39,7 @@ struct Permissions {
 /// fn test_file_creation() -> Result<(), FsTesterError> {
 ///     let config_str = r#"---
 ///     - !directory
-///         name: test
+///         name: test_doc_test_for_fs_tester
 ///         content:
 ///           - !file
 ///               name: test.txt
@@ -158,9 +158,9 @@ impl FsTester {
         dir_path: &PathBuf,
         permissions: &Permissions,
     ) -> Result<String> {
-        let link_name = dir_path.join(&conf.name);
-        let target_name = PathBuf::from(&conf.target);
         if permissions.links_allowed {
+            let link_name = dir_path.join(&conf.name);
+            let target_name = PathBuf::from(&conf.target);
             hard_link(target_name, &link_name).await?;
 
             Ok(link_name.to_string_lossy().into_owned())
@@ -202,27 +202,29 @@ impl FsTester {
 
         for entry in &directory_conf.content {
             match entry {
-                ConfigEntry::Directory(conf) => Self::build_directory_with_content_boxed(
-                    conf,
-                    &dst_dir_path,
-                    level + 1,
-                    permissions,
-                )
-                .await
-                .map_err(|mut err| {
-                    if level == 0 {
-                        err.set_sandbox_dir(Some(String::from(dst_dir_path.to_string_lossy())));
-                    }
-                    err
-                })?,
+                ConfigEntry::Directory(conf) => {
+                    Self::build_directory_with_content_boxed(
+                        conf,
+                        &dst_dir_path,
+                        level + 1,
+                        permissions,
+                    )
+                    .await
+                }
                 ConfigEntry::CloneDirectory(conf) => {
-                    Self::clone_directory(conf, &dst_dir_path, level, permissions).await?
+                    Self::clone_directory(conf, &dst_dir_path, level, permissions).await
                 }
-                ConfigEntry::File(conf) => Self::create_file(conf, &dst_dir_path).await?,
+                ConfigEntry::File(conf) => Self::create_file(conf, &dst_dir_path).await,
                 ConfigEntry::Link(conf) => {
-                    Self::create_link(conf, &dst_dir_path, permissions).await?
+                    Self::create_link(conf, &dst_dir_path, permissions).await
                 }
-            };
+            }
+            .map_err(|mut err| {
+                if level == 0 {
+                    err.set_sandbox_dir(Some(String::from(dst_dir_path.to_string_lossy())));
+                }
+                err
+            })?;
         }
 
         Ok(dst_dir_path.to_string_lossy().into_owned())
@@ -255,11 +257,11 @@ impl FsTester {
     /// # YAML Example
     ///
     /// ```rust
-    /// # use rfs_tester::{FsTester, FsTesterError, FileContent};
+    /// # use rfs_tester::{FsTester, FsTesterError, FileContent };
     /// # use rfs_tester::config::{Configuration, ConfigEntry, DirectoryConf, FileConf, LinkConf};
     /// let simple_conf_str = "---
     ///   - !directory
-    ///       name: test
+    ///       name: test_doc_test_parser_yaml
     ///       content:
     ///         - !file
     ///             name: test.txt
@@ -272,7 +274,7 @@ impl FsTester {
     /// ";
     /// let test_conf = Configuration(vec!(ConfigEntry::Directory(
     /// #   DirectoryConf {
-    /// #     name: String::from("test"),
+    /// #     name: String::from("test_doc_test_parser_yaml"),
     /// #     content: vec!(
     /// #       ConfigEntry::File(
     /// #         FileConf {
@@ -295,10 +297,10 @@ impl FsTester {
     /// use rfs_tester::{FsTester, FsTesterError, FileContent};
     /// use rfs_tester::config::{Configuration, ConfigEntry, DirectoryConf, FileConf, LinkConf};
     /// let simple_conf_str =
-    ///   "[{\"directory\":{\"name\":\"test\",\"content\":[{\"file\":{\"name\":\"test.txt\",\"content\":{\"inline_bytes\":[116,101,115,116]}}}]}}]";
+    ///   "[{\"directory\":{\"name\":\"test_doctest_json\",\"content\":[{\"file\":{\"name\":\"test.txt\",\"content\":{\"inline_bytes\":[116,101,115,116]}}}]}}]";
     /// # let test_conf = Configuration(vec!(ConfigEntry::Directory(
     /// #   DirectoryConf {
-    /// #     name: String::from("test"),
+    /// #     name: String::from("test_doctest_json"),
     /// #     content: vec!(
     /// #       ConfigEntry::File(
     /// #         FileConf {
@@ -327,7 +329,7 @@ impl FsTester {
         }
     }
 
-    /// Creates a test directory, files, and links.
+    /// Creates an RfsTester instance and construct test directory, files, and links by configuration.
     /// config_str - The configuration of the test directory is provided in the string in YAML or JSON format
     /// start_point - The directory name where the testing directory will be created should be specified.
     ///               It should be present in the file system.
@@ -381,7 +383,6 @@ impl FsTester {
                 ))
             }
             _ => return Err(FsTesterError::should_start_from_directory()),
-            // None => return Err(FsTesterError::empty_config()),
         };
 
         if let Err(error) = result {
@@ -400,7 +401,7 @@ impl FsTester {
 
         Ok(FsTester {
             config,
-            base_dir: result.expect("This branch should have sandbox_dir value"),
+            base_dir: result.expect("This code branch should have a sandbox directory."),
         })
     }
 
@@ -417,7 +418,7 @@ impl FsTester {
     /// # use rfs_tester::FsTester;
     /// const YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML: &str = "---
     /// - !directory
-    ///     name: test
+    ///     name: test_doc_perform_fs_test
     ///     content:
     ///       - !file
     ///           name: test_from_cargo.toml
@@ -451,8 +452,8 @@ impl FsTester {
 }
 
 impl Drop for FsTester {
+    /// The drop handler checks to see if the sandbox directory has been created and removes it if it has.
     fn drop(&mut self) {
-        println!("attempt to remove {} directory", &self.base_dir);
         let sandbox_dir = &self.base_dir;
 
         // Protecting the current path from accidental removal
@@ -460,7 +461,10 @@ impl Drop for FsTester {
             && !Self::cmp_canonical_paths(".", sandbox_dir)
         {
             if let Err(e) = std::fs::remove_dir_all(&self.base_dir) {
-                eprintln!("Failed to delete directory: {}", e);
+                eprintln!(
+                    "Failed to delete directory {} due error: {}",
+                    &self.base_dir, e
+                );
             }
         } else {
             eprintln!("Accidental deletion of the current directory is prevented due to incorrect configuration.");
@@ -477,7 +481,7 @@ mod tests {
 
     const YAML_DIR_WITH_EMPTY_FILE: &str = r#"---
   - !directory
-      name: test
+      name: test_yaml_dir_with_empty_file
       content:
         - !file
             name: test.txt
@@ -486,7 +490,7 @@ mod tests {
   "#;
     const YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML: &str = "
   - !directory
-      name: test
+      name: test_dir_with_test_file_from_cargo_toml
       content:
         - !file
             name: test_from_cargo.toml
@@ -496,7 +500,7 @@ mod tests {
 
     const YAML_DIR_WITH_LINK: &str = r#"
     - !directory
-        name: test
+        name: test_yaml_dir_with_link
         content:
             - !link
                 name: cargo_link
@@ -505,14 +509,14 @@ mod tests {
 
     const YAML_DOUBLE_ROOT_DIRS: &str = "
   - !directory
-      name: test
+      name: test_yaml_double_root_dirs
       content:
         - !file
             name: test_from_cargo.toml
             content:
               !original_file Cargo.toml
   - !directory
-      name: bad_dir
+      name: second_root_dir
       content:
         - !file
             name: test.txt
@@ -603,9 +607,12 @@ mod tests {
     #[test]
     fn parser_should_accept_json_correct_simple_config() {
         assert_eq!(
-            FsTester::parse_config("[{\"directory\":{\"name\": \".\",\"content\": []}}]").unwrap(),
+            FsTester::parse_config(
+                "[{\"directory\":{\"name\": \"simple_test_dir\",\"content\": []}}]"
+            )
+            .unwrap(),
             Configuration(vec!(ConfigEntry::Directory(DirectoryConf {
-                name: String::from("."),
+                name: String::from("simple_test_dir"),
                 content: Vec::new()
             }))),
         );
@@ -614,12 +621,14 @@ mod tests {
     #[test]
     fn serialization_for_simple_json_config() {
         let conf: Configuration = Configuration(vec![ConfigEntry::Directory(DirectoryConf {
-            name: String::from("."),
+            name: String::from("json_serialization_test_dir"),
             content: Vec::new(),
         })]);
 
         assert_eq!(
-            String::from("[{\"directory\":{\"name\":\".\",\"content\":[]}}]"),
+            String::from(
+                "[{\"directory\":{\"name\":\"json_serialization_test_dir\",\"content\":[]}}]"
+            ),
             serde_json::to_string(&conf).unwrap(),
         );
     }
@@ -628,11 +637,13 @@ mod tests {
     fn parser_should_accept_yaml_correct_simple_config() {
         assert_eq!(
             Configuration(vec!(ConfigEntry::Directory(DirectoryConf {
-                name: String::from("."),
+                name: String::from("yaml_serialization_test_dir"),
                 content: Vec::new()
             }))),
-            FsTester::parse_config("---\n- !directory\n    name: \".\"\n    content: []\n")
-                .unwrap(),
+            FsTester::parse_config(
+                "---\n- !directory\n    name: \"yaml_serialization_test_dir\"\n    content: []\n"
+            )
+            .unwrap(),
         );
     }
 
@@ -640,7 +651,7 @@ mod tests {
     fn parser_should_accept_yaml_config_with_directory_and_file_by_inline_bytes() {
         let simple_conf_str = "
     - !directory
-        name: test
+        name: test_yaml_config_with_file_by_inline_bytes
         content:
         - !file
             name: test.txt
@@ -652,7 +663,7 @@ mod tests {
               - 116
     ";
         let test_conf = Configuration(vec![ConfigEntry::Directory(DirectoryConf {
-            name: String::from("test"),
+            name: String::from("test_yaml_config_with_file_by_inline_bytes"),
             content: vec![ConfigEntry::File(FileConf {
                 name: String::from("test.txt"),
                 content: FileContent::InlineBytes(String::from("test").into_bytes()),
@@ -666,7 +677,7 @@ mod tests {
     fn parser_should_accept_yaml_config_with_directory_and_file_by_inline_text() {
         let simple_conf_str = "
     - !directory
-        name: test
+        name: test_yaml_config_with_file_by_inline_text
         content:
         - !file
             name: test.txt
@@ -674,7 +685,7 @@ mod tests {
               !inline_text test
     ";
         let test_conf = Configuration(vec![ConfigEntry::Directory(DirectoryConf {
-            name: String::from("test"),
+            name: String::from("test_yaml_config_with_file_by_inline_text"),
             content: vec![ConfigEntry::File(FileConf {
                 name: String::from("test.txt"),
                 content: FileContent::InlineText(String::from("test")),
@@ -688,7 +699,7 @@ mod tests {
     fn parser_should_accept_yaml_config_with_directory_and_file_by_original_path() {
         let simple_conf_str = "
     - !directory
-        name: test
+        name: test_yaml_config_with_file_by_original_path
         content:
         - !file
             name: test.txt
@@ -696,7 +707,7 @@ mod tests {
               !original_file sample_test.txt
     ";
         let test_conf = Configuration(vec![ConfigEntry::Directory(DirectoryConf {
-            name: String::from("test"),
+            name: String::from("test_yaml_config_with_file_by_original_path"),
             content: vec![ConfigEntry::File(FileConf {
                 name: String::from("test.txt"),
                 content: FileContent::OriginalFile(String::from("sample_test.txt")),
@@ -710,7 +721,7 @@ mod tests {
     fn parser_should_accept_yaml_config_with_directory_and_file_by_empty() {
         let simple_conf_str = "
     - !directory
-        name: test
+        name: test_yaml_config_with_empty_file
         content:
         - !file
             name: test.txt
@@ -718,7 +729,7 @@ mod tests {
               !empty
     ";
         let test_conf = Configuration(vec![ConfigEntry::Directory(DirectoryConf {
-            name: String::from("test"),
+            name: String::from("test_yaml_config_with_empty_file"),
             content: vec![ConfigEntry::File(FileConf {
                 name: String::from("test.txt"),
                 content: FileContent::Empty,
@@ -730,9 +741,9 @@ mod tests {
 
     #[test]
     fn parser_should_accept_json_config_with_directory_and_file() {
-        let simple_conf_str = "[{\"directory\":{\"name\":\"test\",\"content\":[{\"file\":{\"name\":\"test.txt\",\"content\":{\"inline_bytes\":[116,101,115,116]}}}]}}]";
+        let simple_conf_str = "[{\"directory\":{\"name\":\"test_json_config_with_file_by_inline_bytes\",\"content\":[{\"file\":{\"name\":\"test.txt\",\"content\":{\"inline_bytes\":[116,101,115,116]}}}]}}]";
         let test_conf = Configuration(vec![ConfigEntry::Directory(DirectoryConf {
-            name: String::from("test"),
+            name: String::from("test_json_config_with_file_by_inline_bytes"),
             content: vec![ConfigEntry::File(FileConf {
                 name: String::from("test.txt"),
                 content: FileContent::InlineBytes(String::from("test").into_bytes()),
@@ -746,7 +757,7 @@ mod tests {
     fn parser_should_accept_yaml_config_with_directory_and_file_and_link() {
         let simple_conf_str = "
     - !directory
-        name: test
+        name: test_yaml_config_with_directory_and_file_and_link
         content:
         - !file
             name: test.txt
@@ -761,7 +772,7 @@ mod tests {
             target: test.txt
     ";
         let test_conf = Configuration(vec![ConfigEntry::Directory(DirectoryConf {
-            name: String::from("test"),
+            name: String::from("test_yaml_config_with_directory_and_file_and_link"),
             content: vec![
                 ConfigEntry::File(FileConf {
                     name: String::from("test.txt"),
@@ -782,12 +793,14 @@ mod tests {
     #[test]
     fn serialization_for_simple_yaml_config() {
         let conf: Configuration = Configuration(vec![ConfigEntry::Directory(DirectoryConf {
-            name: String::from("."),
+            name: String::from("test_serialization_for_simple_yaml_config"),
             content: Vec::new(),
         })]);
 
         assert_eq!(
-            String::from("- !directory\n  name: .\n  content: []\n"),
+            String::from(
+                "- !directory\n  name: test_serialization_for_simple_yaml_config\n  content: []\n"
+            ),
             serde_yaml::to_string(&conf).unwrap(),
         );
     }
@@ -798,7 +811,8 @@ mod tests {
 
         let tester = FsTester::new(YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML, ".")?;
         tester.perform_fs_test(|dirname| {
-            let inner_file_name = format!("{}/{}", dirname, "test_from_cargo.toml");
+            let file_path = PathBuf::from(dirname);
+            let inner_file_name = file_path.join("test_from_cargo.toml");
             let metadata = fs::metadata(inner_file_name)?;
 
             assert!(metadata.len() > 0);
@@ -808,26 +822,40 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
-    fn start_simple_failed_test_should_be_success() {
+    fn start_simple_failed_test_should_be_success() -> Result<()> {
         use std::fs;
 
         let tester = FsTester::new(YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML, ".")
             .expect("Configuration parsing fail");
         tester.perform_fs_test(|dirname| {
-            let inner_file_name = format!("{}/{}", dirname, "test_from_cargo.toml");
-            let metadata = fs::metadata(inner_file_name)?;
+            let file_path = PathBuf::from(dirname);
+            let inner_file_name = file_path.join("another_file.toml");
+            let metadata = fs::metadata(inner_file_name); // Here error should fire
 
-            assert!(metadata.len() == 0);
+            assert!(metadata.is_err());
+
             Ok(())
         });
+
+        Ok(())
     }
 
     #[test]
     fn create_test_dir_with_link_dependent_from_links_allowed_env_var() {
         if env::var("LINKS_ALLOWED") == Ok("Y".to_string()) {
             let tester_result = FsTester::new(YAML_DIR_WITH_LINK, ".");
+
             assert!(tester_result.is_ok());
+
+            tester_result.unwrap().perform_fs_test(|dirname| {
+                let file_path = PathBuf::from(dirname).join("cargo_link");
+                let metadata = std::fs::metadata(file_path);
+
+                assert!(metadata.is_ok());
+                assert!(metadata.unwrap().is_file());
+
+                Ok(())
+            });
         } else {
             let tester_result = FsTester::new(YAML_DIR_WITH_LINK, ".");
             if let Err(error) = tester_result {
@@ -877,7 +905,7 @@ mod tests {
     fn many_files_test() -> Result<()> {
         let conf = r#"
         - !directory
-            name: base_dir
+            name: many_files_test_dir
             content:
                 - !file
                     name: test_from_cargo.toml
