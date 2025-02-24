@@ -7,23 +7,30 @@ use std::{fmt, result as std_result};
 /// This type represents configuration parse and test directory creation errors
 pub struct FsTesterError {
     err: Box<ErrorImpl>,
+
+    /// The path created a sandbox directory. If it was not created, should be None.
+    sandbox_dir: Option<String>,
 }
 
 /// Customized result type to handle config parse error
 pub type Result<T> = std_result::Result<T, FsTesterError>;
 
 macro_rules! fs_tester_error {
-    ($code:expr, $line:expr, $column:expr) => {
+    ($code:expr, $line:expr, $column:expr, $sandbox_dir:expr) => {
         FsTesterError {
             err: Box::new(ErrorImpl {
                 code: $code,
                 line: $line,
                 column: $column,
             }),
+            sandbox_dir: $sandbox_dir,
         }
     };
+    ($code:expr, $line:expr, $column:expr) => {
+        fs_tester_error!($code, $line, $column, None)
+    };
     ($code:expr) => {
-        fs_tester_error!($code, 0, 0)
+        fs_tester_error!($code, 0, 0, None)
     };
 }
 
@@ -38,10 +45,17 @@ impl FsTesterError {
         fs_tester_error!(ErrorCode::ShouldStartFromDirectory)
     }
 
+    /// Construct error instance in case when function gets unexpected type of ConfEntry
+    pub fn unexpected_conf_entry_type() -> Self {
+        fs_tester_error!(ErrorCode::UnexpectedConfEntryType)
+    }
+
+    /// If any non-allowed settings are found in the configuration, an error instance will be created.
     pub fn not_allowed_settings() -> Self {
         fs_tester_error!(ErrorCode::LinksNotAllowed)
     }
 
+    /// An error instance is created when an input/output error occurs.
     pub fn io_error(err: std::io::Error) -> Self {
         fs_tester_error!(ErrorCode::Io(err))
     }
@@ -56,6 +70,16 @@ impl FsTesterError {
         self.err.column
     }
 
+    /// The sandbox_dir getter
+    pub fn sandbox_dir(&self) -> Option<String> {
+        self.sandbox_dir.clone()
+    }
+
+    /// The sandbox_dir setter
+    pub fn set_sandbox_dir(&mut self, sandbox_dir: Option<String>) {
+        self.sandbox_dir = sandbox_dir;
+    }
+
     /// Categorizes the cause of error.
     ///
     /// - `Category::ConfigFormat` - expected configuration format is not satisfied
@@ -64,10 +88,12 @@ impl FsTesterError {
     /// - `Category::Io` - failure to read or write data
     pub fn classify(&self) -> Category {
         match self.err.code {
-            ErrorCode::EmptyConfig | ErrorCode::ShouldStartFromDirectory => Category::ConfigFormat,
+            ErrorCode::EmptyConfig
+            | ErrorCode::ShouldStartFromDirectory
+            | ErrorCode::UnexpectedConfEntryType => Category::ConfigFormat,
             ErrorCode::LinksNotAllowed => Category::NotAllowedSettings,
             ErrorCode::JsonSyntax(_) | ErrorCode::YamlSyntax(_) => Category::Syntax,
-            ErrorCode::Io(_) => Category::Io,
+            ErrorCode::Io(_) | ErrorCode::WalkDir(_) => Category::Io,
         }
     }
 
@@ -136,11 +162,18 @@ pub(crate) enum ErrorCode {
     /// has links entries notify this error
     LinksNotAllowed,
 
+    /// In the build directory, we expect a Directory or Clone Directory type,
+    /// and if we receive any other type, we should throw an Error.
+    UnexpectedConfEntryType,
+
     /// Yaml parser encountered error.
     YamlSyntax(serde_yaml::Error),
 
     /// Json parser encountered error.
     JsonSyntax(serde_json::Error),
+
+    /// Some Walkdir error occurred while walking thru directory entry hierarchy
+    WalkDir(walkdir::Error),
 
     /// Some I/O error occurred while serializing or deserializing.
     Io(std::io::Error),
@@ -176,6 +209,13 @@ impl Display for ErrorCode {
                     "#
                 )
             }
+            ErrorCode::UnexpectedConfEntryType => {
+                write!(
+                    f,
+                    "An unexpected config entry type occurred in configuration."
+                )
+            }
+            ErrorCode::WalkDir(err) => write!(f, "Walkdir error: {}", err),
             ErrorCode::Io(err) => write!(f, "IO error: {}", err),
             ErrorCode::JsonSyntax(err) => write!(f, "JSON syntax error: {}", err),
             ErrorCode::YamlSyntax(err) => write!(f, "YAML syntax error: {}", err),
@@ -185,7 +225,12 @@ impl Display for ErrorCode {
 
 impl Display for FsTesterError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        Display::fmt(&*self.err, f)
+        Display::fmt(&*self.err, f)?;
+        if let Some(sandbox_dir) = &self.sandbox_dir {
+            write!(f, " Created dir {} will be removed.", sandbox_dir,)?;
+        }
+
+        Ok(())
     }
 }
 
@@ -263,6 +308,12 @@ impl From<serde_yaml::Error> for FsTesterError {
         let line = location.as_ref().map(|loc| loc.line()).unwrap_or(0);
         let column = location.as_ref().map(|loc| loc.column()).unwrap_or(0);
         fs_tester_error!(ErrorCode::YamlSyntax(err), line, column)
+    }
+}
+
+impl From<walkdir::Error> for FsTesterError {
+    fn from(err: walkdir::Error) -> Self {
+        fs_tester_error!(ErrorCode::WalkDir(err))
     }
 }
 
