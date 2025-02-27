@@ -1,4 +1,3 @@
-use core::error;
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use rand::Rng;
