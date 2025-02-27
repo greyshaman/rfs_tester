@@ -974,8 +974,7 @@ mod tests {
             source: src
         ";
 
-        let tester = FsTester::new(simple_conf_str, ".")
-            .expect("Correct config should be here");
+        let tester = FsTester::new(simple_conf_str, ".").expect("Correct config should be here");
 
         tester.perform_fs_test(|dirname| {
             let file_path = PathBuf::from(dirname).join("lib.rs");
