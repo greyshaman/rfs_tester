@@ -566,6 +566,8 @@ impl Drop for FsTester {
 
 #[cfg(test)]
 mod tests {
+    use std::os::unix::fs::MetadataExt;
+
     use crate::rfs::config::{file_conf::FileConf, link_conf::LinkConf};
     use crate::rfs::fs_tester_error::Result;
 
@@ -615,6 +617,21 @@ mod tests {
             content:
               !inline_text test
   ";
+
+    #[test]
+    fn cmp_canonical_paths_test_for_equal_paths() {
+        assert!(FsTester::cmp_canonical_paths("test1", "test1"));
+    }
+
+    #[test]
+    fn cmp_canonical_paths_test_for_non_equal_paths() {
+        assert!(!FsTester::cmp_canonical_paths("/", "~"));
+    }
+
+    #[test]
+    fn cmp_canonical_paths_test_for_non_equal_paths_with_first_incorrect() {
+        assert!(!FsTester::cmp_canonical_paths("/987654321", "~"));
+    }
 
     #[test]
     fn constructor_should_throw_error_when_empty_config() {
@@ -788,6 +805,21 @@ mod tests {
     }
 
     #[test]
+    fn parser_should_accept_yaml_config_with_clone_directory() {
+        let simple_conf_str = "
+    - !clone_directory
+        name: test_yaml_config_with_clone_directory
+        source: src
+    ";
+        let test_conf = Configuration(vec![ConfigEntry::CloneDirectory(CloneDirectoryConf {
+            name: String::from("test_yaml_config_with_clone_directory"),
+            source: String::from("src"),
+        })]);
+
+        assert_eq!(test_conf, FsTester::parse_config(simple_conf_str).unwrap());
+    }
+
+    #[test]
     fn parser_should_accept_yaml_config_with_directory_and_file_by_original_path() {
         let simple_conf_str = "
     - !directory
@@ -929,6 +961,29 @@ mod tests {
             Ok(())
         });
 
+        Ok(())
+    }
+
+    #[test]
+    fn start_simple_clone_dir_successful_test() -> Result<()> {
+        use std::fs;
+
+        let simple_conf_str = "
+        - !clone_directory
+            name: test_yaml_config_with_clone_directory
+            source: src
+        ";
+
+        let tester = FsTester::new(simple_conf_str, ".")
+            .expect("Correct config should be here");
+
+        tester.perform_fs_test(|dirname| {
+            let file_path = PathBuf::from(dirname).join("lib.rs");
+            let metadata = fs::metadata(file_path)?;
+
+            assert!(metadata.size() > 0);
+            Ok(())
+        });
         Ok(())
     }
 
