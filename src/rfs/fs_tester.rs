@@ -985,9 +985,21 @@ mod tests {
 
         tester.perform_fs_test(|dirname| {
             let file_path = PathBuf::from(dirname).join("lib.rs");
-            let metadata = fs::metadata(file_path)?;
+            assert!(fs::metadata(file_path)?.size() > 0);
 
-            assert!(metadata.size() > 0);
+            let file_path = PathBuf::from(dirname).join("rfs.rs");
+            assert!(fs::metadata(file_path)?.size() > 0);
+
+            let rfs_dir_path = PathBuf::from(dirname).join("rfs");
+            fs::metadata(&rfs_dir_path).map(|m_data| {
+                assert!(m_data.is_dir());
+            })?;
+
+            let fs_tester_file = PathBuf::from(rfs_dir_path).join("fs_tester.rs");
+            fs::metadata(fs_tester_file).map(|m_data| {
+                assert!(m_data.size() > 0);
+            })?;
+
             Ok(())
         });
         Ok(())
