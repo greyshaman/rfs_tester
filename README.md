@@ -12,14 +12,23 @@ A Rust library for testing file system operations with temporary directories.
 - Create temporary directories and files for testing.
 - Automatically clean up after tests.
 - Flexible configuration using YAML or JSON.
+- Create copy of specified directories.
+- Working in parallel to speed up the creation of sandboxes for testing.
 
 ## Installation
 
 Add the dependency to your `Cargo.toml`:
 
 ```toml
+[dev-dependencies]
+rfs_tester = "1.1.0"
+```
+
+or
+
+```toml
 [dependencies]
-rfs_tester = "1.0.0"
+rfs_tester = "1.1.0"
 ```
 
 ## Overview
@@ -36,6 +45,8 @@ The random generator is used to add uniqueness to the temporary directory name, 
 
 The test directory structure can be configured using the YAML or JSON format.
 
+__!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!__
+
 __WARNING!!!__ Use links with caution, as making changes to the content using a link may modify the original file.
 
 By default, links are disabled to prevent users from accidentally damaging files. In order to enable link support, users must set the "Y" value of the LINKS_ALLOWED environment variable prior to running link tests. If this variable has not been set and a link is found in the configuration for any test, users will be notified with an error message and brief instructions. This way, you can enable link support, but do so at your own risk.
@@ -45,6 +56,8 @@ Example:
 ```bash
 LINKS_ALLOWED=Y cargo test
 ```
+
+__!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!__
 
 ### Yaml configuration
 
@@ -97,6 +110,8 @@ The same directory structure can be configured using JSON format:
 
 The directory structure can contain many nested directories. However, it is important to note that the first level of the configuration should begin with a single directory. This directory will serve as a sandbox container, with a name that includes a randomly generated number. Other inner components, such as directories, files, and links, should not change their original names and can continue to be used for testing purposes in the configuration.
 
+A new feature has been added that allows you to create a copy of a specified directory. This cloned directory can then be used as the root of a sandbox.
+
 Directory configuration can specify the name and content of:
 
 - name - string representing the directory name
@@ -137,6 +152,14 @@ or the same using the JSON:
     }
   ]
 }
+```
+
+### Configuration example of cloning directory
+
+```ymal
+- !clone_directory
+    name: test_yaml_config_with_clone_directory
+    source: src
 ```
 
 ## How to Define a Test?
