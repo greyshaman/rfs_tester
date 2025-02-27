@@ -116,6 +116,10 @@ impl FsTesterError {
         self.classify() == Category::ConfigFormat
     }
 
+    pub fn is_multitasking(&self) -> bool {
+        self.classify() == Category::Multitasking
+    }
+
     /// Returns true if this error was caused of usage not activated restricted features
     pub fn is_not_allowed_settings(&self) -> bool {
         self.classify() == Category::NotAllowedSettings
@@ -347,6 +351,8 @@ impl From<JoinError> for FsTesterError {
 
 #[cfg(test)]
 mod tests {
+    use tokio::sync::Semaphore;
+
     use super::*;
 
     #[test]
@@ -355,7 +361,6 @@ mod tests {
         assert!(error.is_config_format());
         assert_eq!(error.line(), 0);
         assert_eq!(error.column(), 0);
-        assert_eq!(error.classify(), Category::ConfigFormat);
     }
 
     #[test]
@@ -364,7 +369,6 @@ mod tests {
         assert!(error.is_not_allowed_settings());
         assert_eq!(error.line(), 0);
         assert_eq!(error.column(), 0);
-        assert_eq!(error.classify(), Category::NotAllowedSettings);
     }
 
     #[test]
@@ -373,7 +377,6 @@ mod tests {
         let error = FsTesterError::io_error(io_error);
         assert!(error.is_io());
         assert_eq!(error.io_error_kind(), Some(std::io::ErrorKind::NotFound));
-        assert_eq!(error.classify(), Category::Io);
     }
 
     #[test]
@@ -382,7 +385,6 @@ mod tests {
         assert!(error.is_config_format());
         assert_eq!(error.line(), 0);
         assert_eq!(error.column(), 0);
-        assert_eq!(error.classify(), Category::ConfigFormat);
     }
 
     #[test]
@@ -393,7 +395,6 @@ mod tests {
         let error = FsTesterError::from(json_error);
 
         assert!(error.is_syntax());
-        assert_eq!(error.classify(), Category::Syntax);
     }
 
     #[test]
@@ -406,7 +407,6 @@ mod tests {
         let error = FsTesterError::from(json_error);
 
         assert!(error.is_io());
-        assert_eq!(error.classify(), Category::Io);
     }
 
     #[test]
@@ -417,7 +417,6 @@ mod tests {
         let error = FsTesterError::from(json_error);
 
         assert!(error.is_syntax());
-        assert_eq!(error.classify(), Category::Syntax);
     }
 
     #[test]
@@ -431,18 +430,32 @@ mod tests {
 
         // Verify then error classifying correctly
         assert!(error.is_syntax());
-        assert_eq!(error.classify(), Category::Syntax);
     }
 
     #[tokio::test]
-    #[ignore = "need to figure out how to reproduce the acquire_error"]
     async fn test_acquire_error() {
-        todo!("close the semaphore and try to take permit");
+        let semaphore = Semaphore::new(2);
+        semaphore.close();
+        let acquire_error = semaphore
+            .acquire()
+            .await
+            .expect_err("closed semaphore should return error");
+        let error = FsTesterError::from(acquire_error);
+
+        assert!(error.is_multitasking());
     }
 
     #[tokio::test]
-    #[ignore = "need to figure out how to reproduce the join_error"]
     async fn test_join_error() {
-        todo!();
+        let handle = tokio::spawn(async move {
+            panic!("test JoinError");
+        });
+
+        let join_error = handle
+            .await
+            .expect_err("panic in handle should produce JoinError");
+        let error = FsTesterError::from(join_error);
+
+        assert!(error.is_multitasking());
     }
 }
