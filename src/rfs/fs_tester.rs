@@ -1,13 +1,16 @@
+use core::error;
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use rand::Rng;
 use std::env;
+use std::sync::Arc;
 use std::{
     io::{self},
     path::{Path, PathBuf},
 };
 use tokio::fs::{self, hard_link, File};
 use tokio::io::AsyncWriteExt;
+use tokio::sync::Semaphore;
 use walkdir::WalkDir;
 
 use crate::rfs::fs_tester_error::{FsTesterError, Result};
@@ -20,6 +23,7 @@ use super::config::file_content::FileContent;
 use super::config::{FileConf, LinkConf};
 
 const LINKS_ALLOWED_VAR_NAME: &str = "LINKS_ALLOWED";
+const SEMAPHORE_LIMIT: usize = 100;
 
 struct Permissions {
     links_allowed: bool,
@@ -94,44 +98,68 @@ impl FsTester {
         }
     }
 
-    async fn create_dir(dirname: &PathBuf) -> Result<String> {
-        fs::create_dir_all(dirname).await?;
+    async fn create_dir(dirname: Arc<PathBuf>) -> Result<String> {
+        fs::create_dir_all(dirname.as_ref()).await?;
 
         Ok(dirname.to_string_lossy().into_owned())
     }
 
     async fn copy_dir(
-        src_path: &PathBuf,
-        dst_path: &PathBuf,
-        permissions: &Permissions,
+        src_path: Arc<PathBuf>,
+        dst_path: Arc<PathBuf>,
+        permissions: Arc<Permissions>,
+        semaphore: Arc<Semaphore>,
     ) -> Result<String> {
-        let dst_dir_name = Self::create_dir(dst_path).await?;
+        let dst_dir_name = Self::create_dir(dst_path.clone()).await?;
         // Reading source dir
-        let src_dir_entries_iter = WalkDir::new(src_path).into_iter();
+        let src_dir_entries_iter = WalkDir::new(src_path.clone().as_ref()).into_iter();
+        let mut handles = vec![];
+
         for entry in src_dir_entries_iter {
+            let semaphore = semaphore.clone();
             let entry = entry?;
-            let entry_metadata = entry.clone().metadata()?;
-            let src_entry_path = entry.path();
+            let src_entry_path = Arc::new(PathBuf::from(entry.path()));
             let filename = src_entry_path
                 .into_iter()
                 .last()
                 .expect("source dir should not be empty");
-            let dst_entry_path = dst_path.join(filename);
+            let dst_entry_path = Arc::new(dst_path.clone().join(filename));
+            let entry_metadata = entry.clone().metadata()?;
+
             if entry_metadata.is_file() {
                 // copy file
-                let mut src_file = File::open(src_entry_path).await?;
-                let mut dst_file = File::create(dst_entry_path).await?;
-                tokio::io::copy(&mut src_file, &mut dst_file).await?;
+                let mut src_file = File::open(src_entry_path.clone().as_ref()).await?;
+                let mut dst_file = File::create(dst_entry_path.clone().as_ref()).await?;
+                let handle = tokio::spawn(async move {
+                    let _permit = semaphore
+                        .acquire()
+                        .await
+                        .expect("It seems that the semaphore has been closed.");
+                    tokio::io::copy(&mut src_file, &mut dst_file).await
+                });
+
+                handles.push(handle);
             } else if entry_metadata.is_dir() {
                 // start recursion for child dir
-                let src_entry_path = PathBuf::from(src_entry_path);
-                Self::copy_dir_boxed(&src_entry_path, &dst_entry_path, permissions).await?;
+                let src_entry_path = src_entry_path.clone();
+                Self::copy_dir_boxed(
+                    src_entry_path.clone(),
+                    dst_entry_path,
+                    permissions.clone(),
+                    semaphore.clone(),
+                )
+                .await?;
             }
         }
+
+        for handle in handles {
+            handle.await??;
+        }
+
         Ok(dst_dir_name)
     }
 
-    async fn create_file(conf: &FileConf, dir_path: &PathBuf) -> Result<String> {
+    async fn create_file(conf: Arc<FileConf>, dir_path: Arc<PathBuf>) -> Result<String> {
         let dst_file_name = dir_path.join(&conf.name);
         let mut dst_file = File::create(&dst_file_name).await?;
 
@@ -154,9 +182,9 @@ impl FsTester {
 
     /// WARNING!!! Use links with caution, as making changes to the content using a link may modify the original file.
     async fn create_link(
-        conf: &LinkConf,
-        dir_path: &PathBuf,
-        permissions: &Permissions,
+        conf: Arc<LinkConf>,
+        dir_path: Arc<PathBuf>,
+        permissions: Arc<Permissions>,
     ) -> Result<String> {
         if permissions.links_allowed {
             let link_name = dir_path.join(&conf.name);
@@ -170,56 +198,114 @@ impl FsTester {
     }
 
     async fn clone_directory(
-        conf: &CloneDirectoryConf,
-        parent_path: &PathBuf,
+        conf: Arc<CloneDirectoryConf>,
+        parent_path: Arc<PathBuf>,
         level: u32,
-        permissions: &Permissions,
+        permissions: Arc<Permissions>,
+        semaphore: Arc<Semaphore>,
     ) -> Result<String> {
-        let dst_dir_path = Self::gen_dir_path(parent_path, &conf.name, level);
-        let src_dir_path = parent_path.join(&conf.source);
+        let dst_dir_path = Arc::new(Self::gen_dir_path(
+            parent_path.clone().as_ref(),
+            &conf.name,
+            level,
+        ));
+        let src_dir_path = Arc::new(parent_path.join(&conf.source));
 
-        Self::copy_dir(&src_dir_path, &dst_dir_path, permissions)
-            .await
-            .map_err(|mut err| {
-                if level == 0 {
-                    err.set_sandbox_dir(Some(dst_dir_path.to_string_lossy().into_owned()));
-                }
-                err
-            })?;
+        Self::copy_dir(
+            src_dir_path.clone(),
+            dst_dir_path.clone(),
+            permissions.clone(),
+            semaphore.clone(),
+        )
+        .await
+        .map_err(|mut err| {
+            if level == 0 {
+                err.set_sandbox_dir(Some(dst_dir_path.to_string_lossy().into_owned()));
+            }
+            err
+        })?;
 
         Ok(dst_dir_path.to_string_lossy().into_owned())
     }
 
     async fn build_directory_with_content(
-        directory_conf: &DirectoryConf,
-        parent_path: &PathBuf,
+        directory_conf: Arc<DirectoryConf>,
+        parent_path: Arc<PathBuf>,
         level: u32,
-        permissions: &Permissions,
+        permissions: Arc<Permissions>,
+        semaphore: Arc<Semaphore>,
     ) -> Result<String> {
-        let dst_dir_path = Self::gen_dir_path(parent_path, &directory_conf.name, level);
+        let directory_conf = directory_conf.clone();
+        let dst_dir_path = Arc::new(Self::gen_dir_path(
+            parent_path.clone().as_ref(),
+            &directory_conf.name,
+            level,
+        ));
 
-        Self::create_dir(&dst_dir_path).await?;
+        Self::create_dir(dst_dir_path.clone()).await?;
+
+        let mut handles = vec![];
 
         for entry in &directory_conf.content {
+            let entry = entry.clone();
+            let semaphore = semaphore.clone();
+            let permissions = permissions.clone();
+            let dst_dir_path = dst_dir_path.clone();
+
             match entry {
                 ConfigEntry::Directory(conf) => {
-                    Self::build_directory_with_content_boxed(
-                        conf,
-                        &dst_dir_path,
-                        level + 1,
-                        permissions,
-                    )
-                    .await
+                    let conf = Arc::new(conf);
+
+                    let handle = tokio::spawn(async move {
+                        Self::build_directory_with_content_boxed(
+                            conf,
+                            dst_dir_path,
+                            level + 1,
+                            permissions,
+                            semaphore,
+                        )
+                        .await
+                    });
+
+                    handles.push(handle);
                 }
                 ConfigEntry::CloneDirectory(conf) => {
-                    Self::clone_directory(conf, &dst_dir_path, level, permissions).await
+                    let conf = Arc::new(conf);
+
+                    let handle = tokio::spawn(async move {
+                        Self::clone_directory(conf, dst_dir_path, level, permissions, semaphore)
+                            .await
+                    });
+
+                    handles.push(handle);
                 }
-                ConfigEntry::File(conf) => Self::create_file(conf, &dst_dir_path).await,
+                ConfigEntry::File(conf) => {
+                    let conf = Arc::new(conf);
+
+                    let handle = tokio::spawn(async move {
+                        let _permit = semaphore
+                            .acquire()
+                            .await
+                            .expect("It seems that the semaphore has been closed.");
+                        Self::create_file(conf, dst_dir_path).await
+                    });
+
+                    handles.push(handle);
+                }
                 ConfigEntry::Link(conf) => {
-                    Self::create_link(conf, &dst_dir_path, permissions).await
+                    let conf = Arc::new(conf);
+
+                    let handle = tokio::spawn(async move {
+                        Self::create_link(conf, dst_dir_path, permissions).await
+                    });
+
+                    handles.push(handle);
                 }
             }
-            .map_err(|mut err| {
+        }
+
+        for handle in handles {
+            handle.await?.map_err(|mut err| {
                 if level == 0 {
                     err.set_sandbox_dir(Some(String::from(dst_dir_path.to_string_lossy())));
                 }
@@ -230,25 +316,27 @@ impl FsTester {
         Ok(dst_dir_path.to_string_lossy().into_owned())
     }
 
-    fn build_directory_with_content_boxed<'a>(
-        conf: &'a DirectoryConf,
-        parent_path: &'a PathBuf,
+    fn build_directory_with_content_boxed(
+        conf: Arc<DirectoryConf>,
+        parent_path: Arc<PathBuf>,
         level: u32,
-        permissions: &'a Permissions,
-    ) -> BoxFuture<'a, Result<String>> {
+        permissions: Arc<Permissions>,
+        semaphore: Arc<Semaphore>,
+    ) -> BoxFuture<'static, Result<String>> {
         async move {
-            Self::build_directory_with_content(conf, parent_path, level, permissions)
+            Self::build_directory_with_content(conf, parent_path, level, permissions, semaphore)
                 .await
         }
         .boxed()
     }
 
     fn copy_dir_boxed<'a>(
-        src_dir: &'a PathBuf,
-        dst_path: &'a PathBuf,
-        permissions: &'a Permissions,
+        src_dir: Arc<PathBuf>,
+        dst_path: Arc<PathBuf>,
+        permissions: Arc<Permissions>,
+        semaphore: Arc<Semaphore>,
     ) -> BoxFuture<'a, Result<String>> {
-        async move { Self::copy_dir(src_dir, dst_path, permissions).await }.boxed()
+        async move { Self::copy_dir(src_dir, dst_path, permissions, semaphore).await }.boxed()
     }
 
     /// The configuration parser
@@ -336,7 +424,7 @@ impl FsTester {
     pub fn new(config_str: &str, start_point: &str) -> Result<FsTester> {
         let links_allowed =
             env::var(LINKS_ALLOWED_VAR_NAME).unwrap_or_else(|_| "N".to_string()) != "N";
-        let permissions = Permissions { links_allowed };
+        let permissions = Arc::new(Permissions { links_allowed });
 
         let config: Configuration = Self::parse_config(config_str)?;
 
@@ -363,23 +451,28 @@ impl FsTester {
             .next()
             .expect("zero level of configuration should have only one entry");
         // And do verification if the configuration entry is Directory or CloneDirectory
+        let semaphore = Arc::new(Semaphore::new(SEMAPHORE_LIMIT));
         let result = match root_config_entry {
             ConfigEntry::Directory(conf) => {
+                let conf = Arc::new(conf.clone());
                 let runtime = tokio::runtime::Runtime::new()?;
                 runtime.block_on(Self::build_directory_with_content(
-                    &conf,
-                    &PathBuf::from(&base_dir),
+                    conf.clone(),
+                    Arc::new(PathBuf::from(&base_dir)),
                     0,
-                    &permissions,
+                    permissions.clone(),
+                    semaphore.clone(),
                 ))
             }
             ConfigEntry::CloneDirectory(conf) => {
+                let conf = Arc::new(conf.clone());
                 let runtime = tokio::runtime::Runtime::new()?;
                 runtime.block_on(Self::clone_directory(
-                    &conf,
-                    &PathBuf::from(&base_dir),
+                    conf.clone(),
+                    Arc::new(PathBuf::from(&base_dir)),
                     0,
-                    &permissions,
+                    permissions.clone(),
+                    semaphore.clone(),
                 ))
             }
             _ => return Err(FsTesterError::should_start_from_directory()),
