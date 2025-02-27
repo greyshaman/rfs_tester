@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 ///     ]
 /// }
 /// ```
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct CloneDirectoryConf {
     /// A directory will be created with the given name.
     pub name: String,

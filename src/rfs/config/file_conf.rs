@@ -82,7 +82,7 @@ use super::file_content::FileContent;
 ///   }
 /// }
 /// ```
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct FileConf {
     pub name: String,
     pub content: FileContent,

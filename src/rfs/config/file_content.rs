@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// File content can be presented in fourth ways:
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 #[serde(rename_all = "snake_case")]
 pub enum FileContent {
     /// InlineBytes - by byte vector:

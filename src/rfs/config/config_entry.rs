@@ -6,7 +6,7 @@ use super::{
 };
 
 /// A configuration item can be a directory, file, or link.
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 #[serde(rename_all = "snake_case")]
 pub enum ConfigEntry {
     /// The Directory directive specifies the directory that will be created,

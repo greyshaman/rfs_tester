@@ -41,7 +41,7 @@ use super::config_entry::ConfigEntry;
 ///     ]
 /// }
 /// ```
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct DirectoryConf {
     /// A directory will be created with the given name.
     pub name: String,

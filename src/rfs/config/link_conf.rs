@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 ///   "target": "test.txt"
 /// }
 /// ```
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct LinkConf {
     pub name: String,
     pub target: String,
