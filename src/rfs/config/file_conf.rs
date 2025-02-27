@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::rfs::file_content::FileContent;
+use super::file_content::FileContent;
 
 /// The structure for file records in the configuration.
 /// The file can be configured in three ways: as an empty file,
@@ -82,7 +82,7 @@ use crate::rfs::file_content::FileContent;
 ///   }
 /// }
 /// ```
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct FileConf {
     pub name: String,
     pub content: FileContent,

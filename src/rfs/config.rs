@@ -1,10 +1,12 @@
 //! The 'config` module is responsible for configuring the temporary file system.
 //! Enables settings for directories, files, and links.
 
+pub mod clone_directory_conf;
 pub mod config_entry;
 pub mod configuration;
 pub mod directory_conf;
 pub mod file_conf;
+pub mod file_content;
 pub mod link_conf;
 
 pub use config_entry::ConfigEntry;

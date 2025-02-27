@@ -6,6 +6,6 @@
 pub mod rfs;
 
 pub use rfs::config;
-pub use rfs::file_content::FileContent;
+pub use rfs::config::file_content::FileContent;
 pub use rfs::fs_tester::FsTester;
 pub use rfs::fs_tester_error::{FsTesterError, Result};
