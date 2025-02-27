@@ -4,6 +4,9 @@ use std::io::Error as IoError;
 use std::io::ErrorKind;
 use std::{fmt, result as std_result};
 
+use tokio::sync::AcquireError;
+use tokio::task::JoinError;
+
 /// This type represents configuration parse and test directory creation errors
 pub struct FsTesterError {
     err: Box<ErrorImpl>,
@@ -94,6 +97,7 @@ impl FsTesterError {
             ErrorCode::LinksNotAllowed => Category::NotAllowedSettings,
             ErrorCode::JsonSyntax(_) | ErrorCode::YamlSyntax(_) => Category::Syntax,
             ErrorCode::Io(_) | ErrorCode::WalkDir(_) => Category::Io,
+            ErrorCode::AcquireError(_) | ErrorCode::JoinError(_) => Category::Multitasking,
         }
     }
 
@@ -148,6 +152,9 @@ pub enum Category {
     /// The error was caused by a failure to read data sources or permission
     /// denied or some IO errors
     Io,
+
+    /// The error was caused by the failure of multitasking.
+    Multitasking,
 }
 
 #[derive(Debug)]
@@ -177,6 +184,12 @@ pub(crate) enum ErrorCode {
 
     /// Some I/O error occurred while serializing or deserializing.
     Io(std::io::Error),
+
+    /// An error occurred while attempting to acquire a semaphore.
+    AcquireError(AcquireError),
+
+    /// An error occurred while trying to work with the joined task handle.
+    JoinError(JoinError),
 }
 
 #[derive(Debug)]
@@ -219,6 +232,8 @@ impl Display for ErrorCode {
             ErrorCode::Io(err) => write!(f, "IO error: {}", err),
             ErrorCode::JsonSyntax(err) => write!(f, "JSON syntax error: {}", err),
             ErrorCode::YamlSyntax(err) => write!(f, "YAML syntax error: {}", err),
+            ErrorCode::AcquireError(err) => write!(f, "Semaphore err: {}", err),
+            ErrorCode::JoinError(err) => write!(f, "Join handle err: {}", err),
         }
     }
 }
@@ -276,9 +291,10 @@ impl From<FsTesterError> for IoError {
         } else {
             match error.classify() {
                 Category::Io => unreachable!(),
-                Category::Syntax | Category::ConfigFormat | Category::NotAllowedSettings => {
-                    IoError::new(ErrorKind::InvalidData, error)
-                }
+                Category::Syntax
+                | Category::ConfigFormat
+                | Category::NotAllowedSettings
+                | Category::Multitasking => IoError::new(ErrorKind::InvalidData, error),
             }
         }
     }
@@ -314,6 +330,18 @@ impl From<serde_yaml::Error> for FsTesterError {
 impl From<walkdir::Error> for FsTesterError {
     fn from(err: walkdir::Error) -> Self {
         fs_tester_error!(ErrorCode::WalkDir(err))
+    }
+}
+
+impl From<AcquireError> for FsTesterError {
+    fn from(err: AcquireError) -> Self {
+        fs_tester_error!(ErrorCode::AcquireError(err))
+    }
+}
+
+impl From<JoinError> for FsTesterError {
+    fn from(err: JoinError) -> Self {
+        fs_tester_error!(ErrorCode::JoinError(err))
     }
 }
 
@@ -404,5 +432,17 @@ mod tests {
         // Verify then error classifying correctly
         assert!(error.is_syntax());
         assert_eq!(error.classify(), Category::Syntax);
+    }
+
+    #[tokio::test]
+    #[ignore = "need to figure out how to reproduce the acquire_error"]
+    async fn test_acquire_error() {
+        todo!("close the semaphore and try to take permit");
+    }
+
+    #[tokio::test]
+    #[ignore = "need to figure out how to reproduce the join_error"]
+    async fn test_join_error() {
+        todo!();
     }
 }
