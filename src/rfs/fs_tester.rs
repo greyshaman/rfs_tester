@@ -139,6 +139,13 @@ impl FsTester {
 
                 handles.push(handle);
             } else if entry_metadata.is_dir() {
+                let src = src_path.clone();
+                let lh = src.as_ref().to_str().expect("src path should be alive");
+                let rh = entry.path().to_str().expect("walkdir should be provide existing path");
+                if Self::cmp_canonical_paths(lh, rh) {
+                    // skip the same dir
+                    continue;
+                }
                 // start recursion for child dir
                 let src_entry_path = src_entry_path.clone();
                 Self::copy_dir_boxed(
