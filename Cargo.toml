@@ -1,6 +1,6 @@
 [package]
 name = "rfs_tester"
-version = "1.1.0"
+version = "1.1.1"
 authors = ["Sergey Reshetnikov <shaman@simmirra.com>"]
 edition = "2021"
 repository = "https://github.com/greyshaman/rfs_tester"

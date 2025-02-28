@@ -4,6 +4,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/rfs_tester)](https://crates.io/crates/rfs_tester)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](https://crates.io/crates/rfs_tester)
+[![Coverage](https://github.com/greyshaman/rfs_tester/raw/refs/heads/master/images/flat.svg)](https://crates.io/crates/rfs_tester)
 
 A Rust library for testing file system operations with temporary directories.
 
@@ -21,14 +22,14 @@ Add the dependency to your `Cargo.toml`:
 
 ```toml
 [dev-dependencies]
-rfs_tester = "1.1.0"
+rfs_tester = "1.1.1"
 ```
 
 or
 
 ```toml
 [dependencies]
-rfs_tester = "1.1.0"
+rfs_tester = "1.1.1"
 ```
 
 ## Overview
@@ -45,19 +46,16 @@ The random generator is used to add uniqueness to the temporary directory name, 
 
 The test directory structure can be configured using the YAML or JSON format.
 
-__!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!__
-
-__WARNING!!!__ Use links with caution, as making changes to the content using a link may modify the original file.
-
-By default, links are disabled to prevent users from accidentally damaging files. In order to enable link support, users must set the "Y" value of the LINKS_ALLOWED environment variable prior to running link tests. If this variable has not been set and a link is found in the configuration for any test, users will be notified with an error message and brief instructions. This way, you can enable link support, but do so at your own risk.
-
-Example:
-
-```bash
-LINKS_ALLOWED=Y cargo test
-```
-
-__!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!__
+> __WARNING!!!__ Use links with caution, as making changes to the content using a link may modify the original file.
+>
+> By default, links are disabled to prevent users from accidentally damaging files. In order to enable link support, users must set the "Y" value of the LINKS_ALLOWED environment variable prior to running link tests. If this variable has not been set and a link is found in the configuration for any test, users will be notified with an error message and brief instructions. This way, you can enable link support, but do so at your own risk.
+>
+> Example:
+>
+> ```bash
+> LINKS_ALLOWED=Y cargo test
+> ```
+>
 
 ### Yaml configuration
 

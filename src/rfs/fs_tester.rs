@@ -111,7 +111,10 @@ impl FsTester {
     ) -> Result<String> {
         let dst_dir_name = Self::create_dir(dst_path.clone()).await?;
         // Reading source dir
-        let src_dir_entries_iter = WalkDir::new(src_path.clone().as_ref()).into_iter();
+        let src_dir_entries_iter = WalkDir::new(src_path.clone().as_ref())
+            .max_depth(1)
+            .into_iter()
+            .skip(1); // skip self directory
         let mut handles = vec![];
 
         for entry in src_dir_entries_iter {
@@ -139,13 +142,6 @@ impl FsTester {
 
                 handles.push(handle);
             } else if entry_metadata.is_dir() {
-                let src = src_path.clone();
-                let lh = src.as_ref().to_str().expect("src path should be alive");
-                let rh = entry.path().to_str().expect("walkdir should be provide existing path");
-                if Self::cmp_canonical_paths(lh, rh) {
-                    // skip the same dir
-                    continue;
-                }
                 // start recursion for child dir
                 let src_entry_path = src_entry_path.clone();
                 Self::copy_dir_boxed(
@@ -215,7 +211,7 @@ impl FsTester {
             &conf.name,
             level,
         ));
-        let src_dir_path = Arc::new(parent_path.join(&conf.source));
+        let src_dir_path = Arc::new(PathBuf::from(&conf.source));
 
         Self::copy_dir(
             src_dir_path.clone(),
@@ -279,7 +275,7 @@ impl FsTester {
                     let conf = Arc::new(conf);
 
                     let handle = tokio::spawn(async move {
-                        Self::clone_directory(conf, dst_dir_path, level, permissions, semaphore)
+                        Self::clone_directory(conf, dst_dir_path, level + 1, permissions, semaphore)
                             .await
                     });
 
@@ -984,13 +980,58 @@ mod tests {
         let tester = FsTester::new(simple_conf_str, ".").expect("Correct config should be here");
 
         tester.perform_fs_test(|dirname| {
-            let file_path = PathBuf::from(dirname).join("lib.rs");
+            let current_dir_path = PathBuf::from(dirname);
+            let file_path = current_dir_path.join("lib.rs");
             assert!(fs::metadata(file_path)?.size() > 0);
 
-            let file_path = PathBuf::from(dirname).join("rfs.rs");
+            let file_path = current_dir_path.join("rfs.rs");
             assert!(fs::metadata(file_path)?.size() > 0);
 
-            let rfs_dir_path = PathBuf::from(dirname).join("rfs");
+            let config_file_path = current_dir_path.join("config.rs"); // file from another dir level
+            assert!(fs::metadata(config_file_path).is_err());
+
+            let rfs_dir_path = current_dir_path.join("rfs");
+            fs::metadata(&rfs_dir_path).map(|m_data| {
+                assert!(m_data.is_dir());
+            })?;
+
+            let fs_tester_file = PathBuf::from(rfs_dir_path).join("fs_tester.rs");
+            fs::metadata(fs_tester_file).map(|m_data| {
+                assert!(m_data.size() > 0);
+            })?;
+
+            Ok(())
+        });
+        Ok(())
+    }
+
+    #[test]
+    fn start_simple_nested_cloned_dir_successful_test() -> Result<()> {
+        use std::fs;
+
+        let simple_conf_str = "
+        - !directory
+            name: test_yaml_dir_with_nested_cloned_dir
+            content:
+            - !clone_directory
+                name: cloned_src
+                source: ./src
+        ";
+
+        let tester = FsTester::new(simple_conf_str, ".").expect("Correct config should be here");
+
+        tester.perform_fs_test(|dirname| {
+            let cloned_dir_path = PathBuf::from(dirname).join("cloned_src");
+            let file_path = cloned_dir_path.join("lib.rs");
+            assert!(fs::metadata(file_path)?.size() > 0);
+
+            let file_path = cloned_dir_path.join("rfs.rs");
+            assert!(fs::metadata(file_path)?.size() > 0);
+
+            let config_file_path = cloned_dir_path.join("config.rs"); // file from another dir level
+            assert!(fs::metadata(config_file_path).is_err());
+
+            let rfs_dir_path = cloned_dir_path.join("rfs");
             fs::metadata(&rfs_dir_path).map(|m_data| {
                 assert!(m_data.is_dir());
             })?;
