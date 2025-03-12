@@ -53,7 +53,7 @@ struct Permissions {
 ///     let tester = FsTester::new(config_str, ".")?;
 ///
 ///     tester.perform_fs_test(|dirname| {
-///         let file_path = format!("{}/test.txt", dirname);
+///         let file_path = std::path::PathBuf::from(dirname).join("test.txt");
 ///         let content = std::fs::read_to_string(file_path)?;
 ///         assert_eq!(content, "Hello, world!");
 ///         Ok(())
@@ -349,7 +349,7 @@ impl FsTester {
     /// ```rust
     /// # use rfs_tester::{FsTester, FsTesterError, FileContent };
     /// # use rfs_tester::config::{Configuration, ConfigEntry, DirectoryConf, FileConf, LinkConf};
-    /// let simple_conf_str = "---
+    /// let simple_conf_str = "
     ///   - !directory
     ///       name: test_doc_test_parser_yaml
     ///       content:
@@ -510,8 +510,9 @@ impl FsTester {
     ///
     /// ```rust
     /// # use std::fs;
+    /// # use std::path::PathBuf;
     /// # use rfs_tester::FsTester;
-    /// const YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML: &str = "---
+    /// const YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML: &str = "
     /// - !directory
     ///     name: test_doc_perform_fs_test
     ///     content:
@@ -524,7 +525,7 @@ impl FsTester {
     /// let tester = FsTester::new(YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML, ".").expect("Incorrect config");
     /// tester.perform_fs_test(|dirname| {
     /// //                      ^^^^^^^ name with appended random at the end of name
-    ///   let inner_file_name = format!("{}/{}", dirname, "test_from_cargo.toml");
+    ///   let inner_file_name = PathBuf::from(dirname).join("test_from_cargo.toml");
     ///   let metadata = fs::metadata(inner_file_name)?;
     ///
     ///   assert!(metadata.len() > 0);
