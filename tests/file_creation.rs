@@ -14,7 +14,7 @@ const CONFIG: &str = r#"---
 
 #[rfs_test(config = CONFIG, start_point = ".")]
 fn link_creation_test(dirname: &str) -> std::io::Result<()> {
-    let file_path = format!("{dirname}/file_link.txt");
+    let file_path = std::path::PathBuf::from(dirname).join("file_link.txt");
     let meta = fs::metadata(file_path)?;
     assert!(meta.is_file());
     Ok(())

@@ -13,7 +13,7 @@ use rfs_test_macro::rfs_test;
     start_point = "."
 )]
 fn file_creation_test_with_macro(dirname: &str) -> std::io::Result<()> {
-    let file_path = format!("{}/test.txt", dirname);
+    let file_path = std::path::PathBuf::from(dirname).join("test.txt");
     let content = std::fs::read_to_string(file_path)?;
     assert_eq!(content, "Hello, world!");
     Ok(())
@@ -36,8 +36,9 @@ fn file_creation_test_with_macro(dirname: &str) -> std::io::Result<()> {
     start_point = "."
 )]
 fn multiple_files_test(dirname: &str) -> std::io::Result<()> {
-    let file1_path = format!("{}/test1.txt", dirname);
-    let file2_path = format!("{}/test2.txt", dirname);
+    let current_dir = std::path::PathBuf::from(dirname);
+    let file1_path = current_dir.join("test1.txt");
+    let file2_path = current_dir.join("test2.txt");
     let content1 = std::fs::read_to_string(file1_path)?;
     let content2 = std::fs::read_to_string(file2_path)?;
     assert_eq!(content1, "File 1");
