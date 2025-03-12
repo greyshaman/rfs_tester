@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## [1.1.2] - 2025-03-12
+
+### Added
+
+- added doc description about rfs_test_macro usage
+
+### Changed
+
+- The usage of the format! macro has been replaced with PathBuf functions in the test and code examples
+- Updated dependencies in Cargo.toml
+
 ## [1.1.1] - 2025-02-28
 
 ### Added

@@ -1,6 +1,6 @@
 [package]
 name = "rfs_tester"
-version = "1.1.1"
+version = "1.1.2"
 authors = ["Sergey Reshetnikov <shaman@simmirra.com>"]
 edition = "2021"
 repository = "https://github.com/greyshaman/rfs_tester"
@@ -20,9 +20,9 @@ After the tests are finished, the temporary directory will be deleted automatica
 [dependencies]
 rfs_test_macro = "1.1.1"
 rand = "0.9.0"
-serde = { version = "1.0.218", features = ["derive"] }
-serde_json = "1.0.137"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
 serde_yaml = "0.9.34"
-tokio = { version = "1.43.0", features = ["full"] }
+tokio = { version = "1.44.0", features = ["full"] }
 futures = "0.3.31"
 walkdir = "2.5.0"

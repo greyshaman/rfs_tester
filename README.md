@@ -22,14 +22,14 @@ Add the dependency to your `Cargo.toml`:
 
 ```toml
 [dev-dependencies]
-rfs_tester = "1.1.1"
+rfs_tester = "1.1.2"
 ```
 
 or
 
 ```toml
 [dependencies]
-rfs_tester = "1.1.1"
+rfs_tester = "1.1.2"
 ```
 
 ## Overview
@@ -175,7 +175,7 @@ mod tests {
 
   #[test]
   fn test_file_creation() {
-    const YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML: &str = "---
+    const YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML: &str = "
     - !directory
         name: test
         content:
@@ -188,7 +188,7 @@ mod tests {
     let tester = FsTester::new(YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML, ".").expect("Incorrect configuration");
     tester.perform_fs_test(|dirname| {
     //                      ^^^^^^^ name with a random number at the end
-      let inner_file_name = format!("{}/{}", dirname, "test_from_cargo.toml");
+      let inner_file_name = std::path::PathBuf::from(dirname).join("test_from_cargo.toml");
       let metadata = fs::metadata(inner_file_name)?;
 
       assert!(metadata.len() > 0);
@@ -202,11 +202,44 @@ mod tests {
 
 ### Basic Usage with macro rfs_test_macro from [rfs_test_macro](https://crates.io/crates/rfs_test_macro) crate
 
+You can significantly simplify the unit test code by moving the FsTester configuration out of the body of the unit test and into the descriptive part of the macro that declares the test.
+
+Instead of this:
+
+```rust
+use std::path::PathBuf;
+
+#[test]
+fn test_file_creation() {
+  const YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML: &str = r#"
+  - !directory
+      name: test
+      content:
+        - !file
+            name: test.txt
+            content:
+              !inline_text "Hello, world!"
+  "#;
+
+  let tester = FsTester::new(YAML_DIR_WITH_TEST_FILE_FROM_CARGO_TOML, ".").expect("Incorrect configuration");
+  tester.perform_fs_test(|dirname| {
+    let file_path = PathBuf::from(dirname).join("test.txt");
+    let content = std::fs::read_to_string(file_path)?;
+
+    assert_eq!(content, "Hello, world!");
+    Ok(())
+  });
+}
+```
+
+You can use the `rfc_test` macro to write more readable and clear unit tests:
+
 ```rust
 use rfs_test_macro::rfs_test;
+use std::path::PathBuf;
 
 #[rfs_test(
-    config = r#"---
+    config = r#"
     - !directory
         name: test
         content:
@@ -218,17 +251,55 @@ use rfs_test_macro::rfs_test;
     start_point = "."
 )]
 fn file_creation_test(dirname: &str) -> std::io::Result<()> {
-    let file_path = format!("{}/test.txt", dirname);
+    let file_path = PathBuf::from(dirname).join("test.txt");
     let content = std::fs::read_to_string(file_path)?;
+
     assert_eq!(content, "Hello, world!");
     Ok(())
 }
 ```
 
-Add dependency in Cargo.toml to use it:
+Or you can even set the configuration as a constant:
+
+```rust
+use std::path::PathBuf;
+
+use rfs_test_macro::rfs_test;
+
+const CONFIG: &str = r#"
+    - !directory
+        name: test
+        content:
+          - !file
+              name: test.txt
+              content:
+                !inline_text "Hello, world!"
+    "#;
+
+#[rfs_test(
+    config = CONFIG,
+    start_point = "."
+)]
+fn file_creation_test_macro_with_conf_in_const(dirname: &str) -> std::io::Result<()> {
+    let file_path = PathBuf::from(dirname).join("test.txt");
+    let content = std::fs::read_to_string(file_path)?;
+
+    assert_eq!(content, "Hello, world!");
+    Ok(())
+}
+```
+
+Add dependency in Cargo.toml before use `rfs_test` macro:
 
 ```toml
 [dependencies]
+rfs_test_macro = "1.1.1"
+```
+
+or
+
+```toml
+[dev-dependencies]
 rfs_test_macro = "1.1.1"
 ```
 
@@ -262,7 +333,7 @@ fn test_file_creation() {
 
     let tester = FsTester::new(JSON_CONFIG, ".").expect("Incorrect configuration");;
     tester.perform_fs_test(|dirname| {
-        let file_path = format!("{}/test.txt", dirname);
+        let file_path = std::path::PathBuf::from(dirname).join("test.txt");
         let content = std::fs::read_to_string(file_path)?;
         assert_eq!(content, "test");
         Ok(())
